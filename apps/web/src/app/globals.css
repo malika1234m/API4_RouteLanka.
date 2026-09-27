@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+/* RouteLanka tokens.
+   night  = structure (pre-dawn dispatch office)
+   hivis  = the one bold accent: hand-offs and primary actions (dock safety yellow)
+   chill  = semantic only: chilled goods / refrigerated vehicles
+*/
+@theme {
+  --color-night: #16233a;
+  --color-night-2: #24344f;
+  --color-paper: #eef1f4;
+  --color-card: #ffffff;
+  --color-line: #d5dbe3;
+  --color-mute: #5d6b7e;
+  --color-hivis: #f5b800;
+  --color-hivis-deep: #8a6400;
+  --color-chill: #16639a;
+  --color-chill-soft: #e3effa;
+  --color-ok: #23703c;
+  --color-ok-soft: #e4f3e8;
+  --color-late: #a8301f;
+  --color-late-soft: #fbe7e4;
+  --color-amber-soft: #fff4d1;
+
+  --font-sans: var(--font-barlow), system-ui, sans-serif;
+  --font-cond: var(--font-barlow-cond), var(--font-barlow), sans-serif;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-night);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+}
+
+button:not(:disabled),
+a[href],
+select,
+summary,
+[role="radio"] {
+  cursor: pointer;
+}
+button,
+a,
+input,
+select {
+  touch-action: manipulation;
+}
+/* Press feedback without shifting layout. */
+button:not(:disabled):active,
+a[href]:active {
+  transform: scale(0.98);
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  background: var(--color-hivis);
+  color: var(--color-night);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.toast-in {
+  animation: toast-in 200ms ease-out;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-hivis);
+  outline-offset: 2px;
+}
+
+/* Dock-tape hatch: used only for "unknown / not yet synced" states. */
+.hatch {
+  background-image: repeating-linear-gradient(-45deg, var(--color-hivis) 0 6px, var(--color-night) 6px 12px);
+}
+.hatch-soft {
+  background-image: repeating-linear-gradient(-45deg, #f5b80055 0 6px, transparent 6px 12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
