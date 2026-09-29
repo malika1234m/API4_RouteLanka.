@@ -116,6 +116,19 @@ export interface Seed {
   orders: Order[];
   trips: Trip[];
   outlook: OutlookWeek[];
+  outlet_history: Record<string, OutletHistory>;
+}
+
+/** An outlet's recent delivery record from the supplied history. */
+export interface OutletHistory {
+  runs: number;
+  on_time: number;
+  late: number;
+  missed: number;
+  late_median: number | null;
+  recent: { date: string; state: "on_time" | "late" | "missed" }[];
+  since: string;
+  until: string;
 }
 
 /** Where an order is in the relay. Each stage is owned by one role. */
@@ -133,11 +146,14 @@ export interface OrderState {
   deliveredAt?: string;
   deliveredUnits?: number;
   exception?: "short" | "refused" | "damaged" | "closed";
-  pod?: { name: string; method: "signature" | "photo" };
+  /** Proof of delivery: a handover code from the store (works offline), or a name and signature. */
+  pod?: { name: string; method: "signature" | "photo" | "code"; code?: string };
   recordedOffline?: boolean;
   syncedAt?: string;
   receipt?: { ok: boolean; issue?: LineIssue };
   reassignedTo?: string;
+  /** Held-up stop sent back to the depot: by the dispatcher (road) or at the store's request. */
+  deferredEnRoute?: "road" | "store";
 }
 
 /** A field event recorded on the driver's phone. Idempotent by id. */

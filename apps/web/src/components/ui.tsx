@@ -12,11 +12,23 @@ const STAGE_LABEL: Record<Stage, string> = {
 };
 
 /** The signature element: where an order is in the relay, identical for every role. */
-export function RelayTrack({ st, pending = false, compact = false }: { st?: OrderState; pending?: boolean; compact?: boolean }) {
+type Tr = (k: string) => string;
+const same: Tr = (k) => k;
+
+/** Renders **bold** markers in translated sentences. */
+export function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/\*\*(.+?)\*\*/g).map((p, i) => (i % 2 ? <b key={i}>{p}</b> : p))}
+    </>
+  );
+}
+
+export function RelayTrack({ st, pending = false, compact = false, t = same }: { st?: OrderState; pending?: boolean; compact?: boolean; t?: Tr }) {
   const idx = st ? STAGES.indexOf(st.stage) : 0;
   const issue = !!(st?.loadFlag && !st.loadDecision) || !!st?.receipt?.issue || !!st?.exception;
   return (
-    <div className="w-full" aria-label={`Status: ${st?.deferred ? "Deferred" : STAGE_LABEL[st?.stage ?? "ordered"]}`}>
+    <div className="w-full" aria-label={`Status: ${st?.deferred ? t("Deferred") : t(STAGE_LABEL[st?.stage ?? "ordered"])}`}>
       <div className="flex gap-[3px]">
         {STAGES.map((s, i) => {
           let cls = "bg-line";
@@ -30,7 +42,7 @@ export function RelayTrack({ st, pending = false, compact = false }: { st?: Orde
         <div className="mt-1 flex justify-between text-xs text-mute">
           {STAGES.map((s, i) => (
             <span key={s} className={i === idx && !st?.deferred ? "font-semibold text-night" : st?.deferred && i === 1 ? "font-semibold text-late" : ""}>
-              {st?.deferred && i === 1 ? "Deferred" : STAGE_LABEL[s]}
+              {st?.deferred && i === 1 ? t("Deferred") : t(STAGE_LABEL[s])}
             </span>
           ))}
         </div>
@@ -53,13 +65,14 @@ export function Chip({ tone = "neutral", children, className = "" }: { tone?: To
   return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-xs font-medium ${TONE[tone]} ${className}`}>{children}</span>;
 }
 
-export function stageChip(st?: OrderState) {
+export function stageChip(st?: OrderState, t: Tr = same) {
   if (!st) return null;
-  if (st.deferred) return <Chip tone="late">Deferred</Chip>;
-  if (st.receipt?.issue) return <Chip tone="late">Issue reported</Chip>;
-  if (st.loadFlag && !st.loadDecision) return <Chip tone="late">Flagged at dock</Chip>;
+  if (st.deferred) return <Chip tone="late">{t("Deferred")}</Chip>;
+  if (st.deferredEnRoute) return <Chip tone="late">{t("Bring back to depot")}</Chip>;
+  if (st.receipt?.issue) return <Chip tone="late">{t("Issue reported")}</Chip>;
+  if (st.loadFlag && !st.loadDecision) return <Chip tone="late">{t("Flagged at dock")}</Chip>;
   const tone: Tone = st.stage === "received" || st.stage === "delivered" ? "ok" : st.stage === "on_road" ? "night" : "neutral";
-  return <Chip tone={tone}>{STAGE_LABEL[st.stage]}</Chip>;
+  return <Chip tone={tone}>{t(STAGE_LABEL[st.stage])}</Chip>;
 }
 
 /** Used vs capacity. Turns red past 100%, amber past 90%. */
@@ -122,6 +135,10 @@ export const IconCheck = (p: { className?: string }) => <I {...p} d={<path d="M4
 export const IconFlag = (p: { className?: string }) => <I {...p} d={<path d="M5 21V4h11l-2 4 2 4H5" />} />;
 export const IconOutbox = (p: { className?: string }) => <I {...p} d={<><path d="M4 14v5h16v-5" /><path d="M12 15V3M8 7l4-4 4 4" /></>} />;
 export const IconArrow = (p: { className?: string }) => <I {...p} d={<path d="M5 12h14M13 6l6 6-6 6" />} />;
+export const IconMap = (p: { className?: string }) => <I {...p} d={<><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></>} />;
+export const IconChat = (p: { className?: string }) => <I {...p} d={<path d="M4 20l1.5-4A8 8 0 1112 20a8 8 0 01-3.5-.8z" />} />;
+export const IconLock = (p: { className?: string }) => <I {...p} d={<><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></>} />;
+export const IconWrench = (p: { className?: string }) => <I {...p} d={<path d="M14.5 6.5a4 4 0 00-5.2 5.2L4 17l3 3 5.3-5.3a4 4 0 005.2-5.2l-2.5 2.5-2.5-.5-.5-2.5z" />} />;
 export const IconBack = (p: { className?: string }) => <I {...p} d={<path d="M19 12H5M11 6l-6 6 6 6" />} />;
 
 export function OrderMarks({ o, className = "size-4" }: { o: { temp_requirement: string; parking_constraint: string; mall_window?: string } ; className?: string }) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { DelayDecision, RoadBanner } from "@/components/DelayDecision";
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { Shell } from "@/components/Shell";
@@ -21,6 +22,7 @@ const VIEWS: { id: View; label: string }[] = [
 ];
 
 const DRV = `${seed.personas.driver.vehicle_id}#${seed.personas.driver.trip_id}`;
+const isDelivered = (s: DemoState, o: Order) => ["delivered", "received"].includes(s.states[o.order_ref].stage);
 const isDone = (s: DemoState, o: Order) => ["delivered", "received"].includes(s.states[o.order_ref].stage) || !!s.states[o.order_ref].reassignedTo;
 
 function runStatus(s: DemoState, k: string, os: Order[]): Status {
@@ -66,7 +68,7 @@ export default function LiveRuns() {
     .sort((a, b) => order[a.status] - order[b.status] || Number(b.k === DRV) - Number(a.k === DRV) || a.k.localeCompare(b.k));
 
   const allStops = runs.flatMap((r) => r.orders);
-  const delivered = allStops.filter((o) => isDone(s, o)).length;
+  const delivered = allStops.filter((o) => isDelivered(s, o)).length;
   const lateRisk = allStops.filter((o) => !isDone(s, o) && (o.pred_late_prob ?? 0) >= 0.5).length;
   const openItems = s.feed.filter((f) => f.open);
   const rest = s.feed.filter((f) => !f.open).slice(0, 10);
@@ -90,6 +92,7 @@ export default function LiveRuns() {
         </div>
         <Legend />
       </div>
+      <RoadBanner />
 
       <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         {figures.map((x) => (
@@ -211,7 +214,8 @@ function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders:
   const { v, k, orders } = r;
   const offline = k === DRV && !s.driver.online;
   const lastIdx = offline ? orders.findIndex((o) => o.order_ref === s.driver.lastContactStop) : -1;
-  const done = orders.filter((o) => isDone(s, o)).length;
+  const mine = orders.filter((o) => !s.states[o.order_ref].reassignedTo);
+  const done = mine.filter((o) => isDelivered(s, o)).length;
   const next = orders.find((o) => !isDone(s, o));
   const meta = seed.trips.find((t) => tripKey(t) === k);
 
@@ -265,12 +269,12 @@ function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders:
           <div className="w-28">
             <div className="flex justify-between text-xs">
               <span className="font-semibold">
-                {done}/{orders.length}
+                {done}/{mine.length}
               </span>
               <span className="text-mute">{next ? `next ${next.outlet_id}` : "done"}</span>
             </div>
             <div className="mt-1 h-1.5 overflow-hidden rounded-sm bg-line">
-              <div className="h-full bg-ok" style={{ width: `${(done / orders.length) * 100}%` }} />
+              <div className="h-full bg-ok" style={{ width: `${(done / Math.max(mine.length, 1)) * 100}%` }} />
             </div>
           </div>
         </td>
@@ -298,7 +302,7 @@ function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders:
                   Last contact {s.driver.lastContact ?? s.departed[k] ?? "at the dock"}
                   {lastIdx >= 0 ? ` at stop ${orders[lastIdx].stop_seq}` : ""}. Records will arrive when the phone reconnects.
                 </span>
-                <ReassignLast orders={orders} vid={v.vehicle_id} dispatch={dispatch} />
+                {s.driver.delay ? <span className="font-semibold">SMS {s.driver.delay.at}: held up about {s.driver.delay.minutes} min. Decide the stops in the right-hand panel.</span> : <ReassignLast orders={orders} vid={v.vehicle_id} dispatch={dispatch} />}
               </div>
             )}
             <table className="w-full text-sm">
@@ -315,12 +319,12 @@ function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders:
               <tbody>
                 {orders.map((o) => {
                   const st = s.states[o.order_ref];
-                  const late = (o.pred_late_prob ?? 0) >= 0.5;
+                  const late = !st.reassignedTo && (o.pred_late_prob ?? 0) >= 0.5;
                   return (
-                    <tr key={o.order_ref} className="border-t border-line/50">
+                    <tr key={o.order_ref} className={`border-t border-line/50 ${st.reassignedTo ? "text-mute" : ""}`}>
                       <td className="py-1 pr-2 font-cond">{o.stop_seq}</td>
                       <td className="px-2 py-1">
-                        <span className="font-cond font-semibold">{o.outlet_id}</span> <span className="text-mute">{o.temp_requirement === "chilled" ? "chilled" : "dry"} · {o.order_units} units</span>
+                        <span className="font-cond font-semibold">{o.outlet_id}</span> <span className="text-mute">{o.brand === "Fresh" ? (o.temp_requirement === "chilled" ? "chilled" : "dry") : o.brand} · {o.order_units} {o.brand === "Fresh" ? "crates" : "units"}</span>
                       </td>
                       <td className="px-2 py-1 font-cond">
                         {o.window_open_time}–{o.window_close_time}
@@ -372,12 +376,13 @@ function ReassignLast({ orders, vid, dispatch }: { orders: Order[]; vid: string;
 
 function DecisionCard({ f }: { f: FeedItem }) {
   const { s, dispatch } = useDemo();
+  if (f.role === "driver" && s.driver.delay && f.text.includes("delay")) return <DelayDecision />;
   const o = s.orders.find((x) => x.order_ref === f.ref);
   const st = f.ref ? s.states[f.ref] : undefined;
   if (f.role === "loader" && o && st?.loadFlag) {
     const later = new Set(s.orders.filter((x) => tripKey(x) === tripKey(o) && (x.stop_seq ?? 0) >= (o.stop_seq ?? 0)).map((x) => x.stop_seq)).size;
     const opts = [
-      { d: "send_short" as const, t: "Send short", sub: `${o.outlet_id} gets ${Math.max(o.order_units - st.loadFlag.qty, 0)} of ${o.order_units} units, balance next run` },
+      { d: "send_short" as const, t: "Send short", sub: `${o.outlet_id} gets ${Math.max(o.order_units - st.loadFlag.qty, 0)} of ${o.order_units} ${o.brand === "Fresh" ? "crates" : "units"}, balance next run` },
       { d: "hold" as const, t: "Hold 15 min for restock", sub: `${later} stop${later > 1 ? "s" : ""} arrive about 15 min later` },
       { d: "defer_rest" as const, t: "Defer the missing items", sub: "Recorded with a reason; the store is told the new date" },
     ];

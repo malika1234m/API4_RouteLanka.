@@ -7,6 +7,7 @@ import { Btn, BtnLink, Card, IconCheck, IconChill } from "@/components/ui";
 import { outletById, seed } from "@/lib/seed";
 import { demoNow, useDemo } from "@/lib/store";
 import type { Order } from "@/lib/types";
+import { useT } from "@/lib/i18n";
 
 type Line = { key: string; label: string; temp: "chilled" | "ambient"; m3: number; kg: number };
 const LINES: Record<string, Line[]> = {
@@ -57,6 +58,7 @@ function lastOrderQty(outletId: string, lines: Line[]): Record<string, number> {
 
 export default function PlaceOrder() {
   const { s, dispatch } = useDemo();
+  const { t } = useT("store");
   const [outletId, setOutlet] = useOutlet();
   const outlet = outletById.get(outletId)!;
   const lines = LINES[outlet.brand];
@@ -64,7 +66,7 @@ export default function PlaceOrder() {
   const [done, setDone] = useState<Order[] | null>(null);
   const mins = useCountdown();
   const open = mins === null || mins > 0;
-  const runDay = open ? "Saturday 25 April" : "Monday 27 April";
+  const runDay = t(open ? "Saturday 25 April" : "Monday 27 April");
 
   const submit = () => {
     const made: Order[] = [];
@@ -73,7 +75,7 @@ export default function PlaceOrder() {
       if (!ls.length) continue;
       const units = ls.reduce((s, l) => s + qty[l.key], 0);
       made.push({
-        order_ref: `ORD-${outletId.slice(3)}${temp === "chilled" ? "C" : "A"}-${Math.floor(Math.random() * 9000 + 1000)}`,
+        order_ref: `ORD-${outletId.slice(3)}${temp === "chilled" ? "C" : "A"}-${4127 + (s.placed.length + 1) * 613}`,
         outlet_id: outletId,
         brand: outlet.brand,
         district: outlet.district,
@@ -102,31 +104,31 @@ export default function PlaceOrder() {
   return (
     <Shell width="medium" role="store" who={`${seed.personas.store.name} · ${outlet.brand} ${outlet.district}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-cond text-3xl font-bold">Place order</h1>
+        <h1 className="font-cond text-3xl font-bold">{t("Place order")}</h1>
         <OutletPicker id={outletId} onChange={(id) => { setOutlet(id); setQty({}); setDone(null); }} />
       </div>
       <p className={`mt-2 rounded-md px-3 py-2 font-semibold ${open ? "bg-amber-soft text-hivis-deep" : "bg-paper"}`} role="status">
-        {mins === null ? "Orders close at 16:00." : open ? `Orders for ${runDay} close at 16:00, in ${Math.floor(mins / 60)} h ${mins % 60} min.` : `Today's cutoff has passed. This order joins the ${runDay} run.`}
+        {mins === null ? t("Orders close at 16:00.") : open ? t("Orders for {d} close at 16:00, in {h} h {m} min.", { d: runDay, h: Math.floor(mins / 60), m: mins % 60 }) : t("Today's cutoff has passed. This order joins the {d} run.", { d: runDay })}
       </p>
 
       {done ? (
         <Card className="mt-4 p-5">
           <p className="flex items-center gap-2 text-xl font-semibold text-ok">
-            <IconCheck className="size-6" /> Received by Waypoint at {demoNow(s.clockStart)}
+            <IconCheck className="size-6" /> {t("Received by Waypoint at {t}", { t: demoNow(s.clockStart) })}
           </p>
           <ul className="mt-3 space-y-1">
             {done.map((o) => (
               <li key={o.order_ref}>
-                <span className="font-cond text-lg font-bold">{o.order_ref}</span> · {o.temp_requirement === "chilled" ? "Chilled" : "Dry"} · {o.order_units} {outlet.brand === "Fresh" ? "crates" : "units"}
+                <span className="font-cond text-lg font-bold">{o.order_ref}</span> · {t(o.temp_requirement === "chilled" ? "Chilled" : "Dry")} · {o.order_units} {t(outlet.brand === "Fresh" ? "crates" : "units")}
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-mute">For delivery on {runDay}. You&apos;ll see the arrival window in My deliveries after the plan is published. If anything can&apos;t be delivered, you&apos;ll be told why and when it will come instead.</p>
+          <p className="mt-3 text-mute">{t("For delivery on {d}. You'll see the arrival window in My deliveries after the plan is published. If anything can't be delivered, you'll be told why and when it will come instead.", { d: runDay })}</p>
           <div className="mt-4 flex gap-2">
             <BtnLink href="/store" variant="primary">
-              See my deliveries
+              {t("See my deliveries")}
             </BtnLink>
-            <Btn onClick={() => { setDone(null); setQty({}); }}>Place another order</Btn>
+            <Btn onClick={() => { setDone(null); setQty({}); }}>{t("Place another order")}</Btn>
           </div>
         </Card>
       ) : (
@@ -140,19 +142,19 @@ export default function PlaceOrder() {
                 <p className="flex items-center gap-2 font-cond text-xl font-semibold">
                   {temp === "chilled" ? (
                     <>
-                      <span className="text-chill"><IconChill className="size-5" /></span> Chilled order
+                      <span className="text-chill"><IconChill className="size-5" /></span> {t("Chilled order")}
                     </>
                   ) : outlet.brand === "Fresh" ? (
-                    "Dry goods order"
+                    t("Dry goods order")
                   ) : (
-                    `${outlet.brand} order`
+                    t("{b} order", { b: outlet.brand })
                   )}
                 </p>
-                {temp === "chilled" && <p className="text-sm text-mute">Travels separately on a refrigerated vehicle.</p>}
+                {temp === "chilled" && <p className="text-sm text-mute">{t("Travels separately on a refrigerated vehicle.")}</p>}
                 <ul className="mt-3 divide-y divide-line">
                   {ls.map((l) => (
                     <li key={l.key} className="flex items-center gap-3 py-2">
-                      <span className="flex-1">{l.label}</span>
+                      <span className="flex-1">{t(l.label)}</span>
                       <Btn className="!h-11 !w-11 sm:!h-9 sm:!w-9" onClick={() => setQty((q) => ({ ...q, [l.key]: Math.max(0, (q[l.key] ?? 0) - 1) }))} aria-label={`Fewer ${l.label}`}>
                         −
                       </Btn>
@@ -175,15 +177,15 @@ export default function PlaceOrder() {
           </div>
           <aside className="space-y-3 lg:sticky lg:top-28 lg:self-start">
             <Card>
-              <p className="border-b border-line px-4 py-2.5 font-cond text-lg font-semibold">Order summary</p>
+              <p className="border-b border-line px-4 py-2.5 font-cond text-lg font-semibold">{t("Order summary")}</p>
               <ul className="divide-y divide-line text-sm">
                 {lines.filter((l) => (qty[l.key] ?? 0) > 0).map((l) => (
                   <li key={l.key} className="flex justify-between px-4 py-1.5">
-                    <span>{l.label}</span>
+                    <span>{t(l.label)}</span>
                     <span className="font-cond font-semibold">{qty[l.key]}</span>
                   </li>
                 ))}
-                {total === 0 && <li className="px-4 py-3 text-mute">Nothing added yet. Use the + buttons, or start from Friday&apos;s order.</li>}
+                {total === 0 && <li className="px-4 py-3 text-mute">{t("Nothing added yet. Use the + buttons, or start from Friday's order.")}</li>}
               </ul>
               <dl className="grid grid-cols-3 gap-px border-t border-line bg-line text-center">
                 {[
@@ -192,22 +194,22 @@ export default function PlaceOrder() {
                   ["Weight", `${Math.round(lines.reduce((a, l) => a + l.kg * (qty[l.key] ?? 0), 0))} kg`],
                 ].map(([k, v]) => (
                   <div key={String(k)} className="bg-card px-2 py-2">
-                    <dt className="text-xs text-mute">{k}</dt>
+                    <dt className="text-xs text-mute">{t(String(k))}</dt>
                     <dd className="font-cond text-lg font-bold">{v}</dd>
                   </div>
                 ))}
               </dl>
               <div className="space-y-2 border-t border-line p-3">
-                <p className="text-xs text-mute">Delivery on {runDay} · receiving window {outlet.window_open_time}–{outlet.window_close_time}</p>
+                <p className="text-xs text-mute">{t("Delivery on {d} · receiving window {a}–{b}", { d: runDay, a: outlet.window_open_time, b: outlet.window_close_time })}</p>
                 <Btn variant="primary" size="lg" className="w-full" disabled={total === 0} onClick={submit}>
-                  Send order
+                  {t("Send order")}
                 </Btn>
                 <Btn className="w-full" onClick={() => setQty(lastOrderQty(outletId, lines))}>
-                  Start from Friday&apos;s order
+                  {t("Start from Friday's order")}
                 </Btn>
                 {total > 0 && (
                   <button onClick={() => setQty({})} className="h-9 w-full text-sm text-mute underline">
-                    Clear all
+                    {t("Clear all")}
                   </button>
                 )}
               </div>

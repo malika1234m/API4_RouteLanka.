@@ -165,14 +165,28 @@ drv = max(ne, key=lambda t: len(t["stops"])) if ne else max(trips_out, key=lambd
 seed = dict(
     meta=dict(date=DEMO_DATE, dow="Friday", festival="Vesak", festival_date="2026-05-01", kandy_source_date=kdate,
               monsoon=demo_monsoon, fresh_budget=270, day_budget=480, cutoff="16:00"),
-    personas=dict(dispatcher=dict(name="Nirosha Perera", depot="Peliyagoda"),
-                  loader=dict(name="Kasun Jayasinghe", depot=drv["depot"]),
-                  driver=dict(name="Suresh Kumar", vehicle_id=drv["vehicle_id"], trip_id=drv["trip_id"]),
-                  store=dict(name="Fathima Rizwan", outlet_id=store["outlet_id"])),
+    personas=dict(dispatcher=dict(name="Gehiru", depot="Peliyagoda"),
+                  loader=dict(name="Senash", depot=drv["depot"]),
+                  driver=dict(name="Nimsith", vehicle_id=drv["vehicle_id"], trip_id=drv["trip_id"]),
+                  store=dict(name="Malika", outlet_id=store["outlet_id"])),
     outlets=outlets.fillna("").to_dict("records"),
     vehicles=veh, districts=[dict(district=k, **v) for k, v in dtravel.items()],
     allowance=[dict(brand=b, dock_type=d, minutes=m) for (b, d), m in allow.items()],
     orders=orders, trips=trips_out, outlook=outlook)
+# ---------- per-outlet delivery record (last 90 orders on file) for the store manager ----------
+import numpy as np
+hj = train.merge(legs[["route_id", "seq", "arrival_time"]], left_on=["route_id", "seq_in_route"], right_on=["route_id", "seq"], how="left")
+arr = hj.arrival_time.map(lambda x: hm(x) if isinstance(x, str) else np.nan)
+hj["state"] = np.where(hj.dispatch_status != "attempted", "missed", np.where(arr > hj.window_close_time.map(hm), "late", "on_time"))
+hj["late_min"] = (arr - hj.window_close_time.map(hm)).where(hj.state == "late")
+hist = {}
+for oid, g in hj.sort_values("order_date").groupby("outlet_id"):
+    last = g.tail(90)
+    runs = g.groupby("order_date").state.agg(lambda x: "missed" if (x == "missed").any() else ("late" if (x == "late").any() else "on_time")).tail(20)
+    hist[oid] = dict(runs=len(last), on_time=round((last.state == "on_time").mean() * 100), late=round((last.state == "late").mean() * 100),
+                     missed=int((last.state == "missed").sum()), late_median=None if last.late_min.isna().all() else int(last.late_min.median()),
+                     recent=[dict(date=k, state=v) for k, v in runs.items()], since=last.order_date.min(), until=last.order_date.max())
+seed["outlet_history"] = hist
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(json.dumps(seed, indent=1, default=lambda x: x.item() if hasattr(x, "item") else str(x)))
 

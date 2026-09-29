@@ -22,8 +22,8 @@
   --color-late-soft: #fbe7e4;
   --color-amber-soft: #fff4d1;
 
-  --font-sans: var(--font-barlow), system-ui, sans-serif;
-  --font-cond: var(--font-barlow-cond), var(--font-barlow), sans-serif;
+  --font-sans: var(--font-barlow), var(--font-si), var(--font-ta), system-ui, sans-serif;
+  --font-cond: var(--font-barlow-cond), var(--font-barlow), var(--font-si), var(--font-ta), sans-serif;
 }
 
 html {
@@ -104,3 +104,6 @@ a[href]:active {
   }
 }
 
+
+/* Calm, grey map so status colours carry the meaning. */
+.rl-tiles { filter: grayscale(1) contrast(0.85) brightness(1.08); }
