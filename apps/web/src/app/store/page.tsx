@@ -6,7 +6,6 @@ import { Btn, BtnLink, Card, IconChat, IconCheck, IconLock, IconNoSignal, RelayT
 import { deferralConsequence, outletById, REASON_LABEL, seed, tripKey, vehicleById } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
 import type { Order } from "@/lib/types";
-import { handoverCode } from "@/lib/handover";
 import { useT } from "@/lib/i18n";
 import { delayedEta } from "@/lib/delay";
 
@@ -235,7 +234,7 @@ function OrderCard({ o }: { o: Order }) {
             <span className="block text-sm font-semibold">{t("Handover code for this delivery")}</span>
             <span className="block text-xs text-mute">{t("Give it to the driver only when the goods are in front of you. It works even when the driver has no signal.")}</span>
           </span>
-          <span className="font-cond text-2xl font-bold tracking-[0.3em]">{handoverCode(o.order_ref)}</span>
+          <span className="font-cond text-2xl font-bold tracking-[0.3em]">{s.codes?.[o.order_ref] ?? "····"}</span>
         </div>
       )}
       {s.published && st.deferred && (

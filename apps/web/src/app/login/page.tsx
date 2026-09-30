@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ROLES } from "@/components/Shell";
 import { Btn, Card } from "@/components/ui";
+import { api } from "@/lib/api";
 import { useDemo } from "@/lib/store";
 
 /** Seeded demo accounts, one per role. Passwords are demo-only and shown on purpose. */
@@ -23,10 +24,18 @@ export default function Login() {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
-  const go = (u: string, p: string) => {
-    const role = ROLES.find((r) => ACCOUNTS[r.role].user === u.trim().toLowerCase());
-    if (!role || p !== PASSWORD) return setErr("That username and password don't match a demo account.");
-    router.push(role.href);
+  const go = async (u: string, p: string) => {
+    setErr("");
+    try {
+      const a = await api<{ role: string }>("/auth/login", { username: u, password: p }, undefined);
+      const home = ROLES.find((r) => r.role === a.role)!.href;
+      // Came here from a screen that needed this role: go back to it.
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get("role") === a.role ? params.get("next") : null;
+      router.push(next && next.startsWith("/") ? next : home);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Sign-in failed.");
+    }
   };
 
   return (
@@ -48,7 +57,7 @@ export default function Login() {
               className="mt-3 space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                go(user, pass);
+                void go(user, pass);
               }}
             >
               <label className="block">
@@ -81,7 +90,7 @@ export default function Login() {
                     <span className="block font-cond text-sm">{ACCOUNTS[r.role].user}</span>
                     <span className="block text-xs text-mute">{ACCOUNTS[r.role].sign}</span>
                   </span>
-                  <Btn onClick={() => go(ACCOUNTS[r.role].user, PASSWORD)}>Sign in</Btn>
+                  <Btn onClick={() => void go(ACCOUNTS[r.role].user, PASSWORD)}>Sign in</Btn>
                 </li>
               ))}
             </ul>

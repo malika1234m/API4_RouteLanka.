@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Barlow, Barlow_Condensed, Noto_Sans_Sinhala, Noto_Sans_Tamil } from "next/font/google";
+import { ServiceWorker } from "@/components/ServiceWorker";
 import { DemoProvider } from "@/lib/store";
 import "./globals.css";
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${barlow.variable} ${barlowCond.variable} ${sinhala.variable} ${tamil.variable} h-full antialiased`}>
       <body className="min-h-full">
+        <ServiceWorker />
         <DemoProvider>{children}</DemoProvider>
       </body>
     </html>

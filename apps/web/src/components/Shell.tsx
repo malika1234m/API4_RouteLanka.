@@ -123,9 +123,16 @@ function RoleSwitcher({ role }: { role: Role }) {
               {r.role === role && <span className="text-xs font-semibold text-hivis-deep">{t("Current")}</span>}
             </Link>
           ))}
-          <Link href="/login" onClick={() => setOpen(false)} className="block border-t border-line px-3 py-2 text-sm text-mute hover:bg-paper">
+          <button
+            onClick={async () => {
+              setOpen(false);
+              await fetch("/api/auth/logout", { method: "POST" });
+              window.location.href = "/login";
+            }}
+            className="block w-full border-t border-line px-3 py-2 text-left text-sm text-mute hover:bg-paper"
+          >
             {t("Sign out")}
-          </Link>
+          </button>
         </div>
       )}
     </div>

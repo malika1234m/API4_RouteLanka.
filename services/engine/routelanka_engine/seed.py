@@ -218,6 +218,8 @@ def main():
         cur.execute("INSERT INTO order_progress (workspace_id, order_ref) SELECT %s, order_ref FROM orders WHERE workspace_id = %s", [tpl, tpl])
         cur.execute("INSERT INTO driver_status (workspace_id, vehicle_id) VALUES (%s, %s)", [tpl, drv["vehicle_id"]])
         cur.execute("SELECT clone_template_day('Friday 24 April 2026', true)")
+        default_day = cur.fetchone()[0]
+        cur.execute("INSERT INTO events (workspace_id, type, actor_role, text, at, in_feed) VALUES (%s, 'day.created', 'dispatcher', 'Demo day created', '03:00', false)", [default_day])
 
         log("accounts")
         pw = os.environ.get("SEED_PASSWORD", "routelanka").encode()

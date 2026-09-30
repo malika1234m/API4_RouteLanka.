@@ -6,7 +6,7 @@ import { Shell } from "@/components/Shell";
 import { Btn, Card, Chip, Meter, OrderMarks } from "@/components/ui";
 import { checkMove, DAY_BUDGET, FRESH_BUDGET, loadsFor, vehicleUse, violations } from "@/lib/rules";
 import { REASON_LABEL, seed, vehicleById } from "@/lib/seed";
-import { useDemo, type DemoState } from "@/lib/store";
+import { useDemo } from "@/lib/store";
 import type { Order, ReasonCode } from "@/lib/types";
 
 type Filter = "all" | "chilled" | "late" | "repeat";
@@ -32,7 +32,8 @@ export default function PlanBoard() {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ state: DemoState; label: string } | null>(null);
+  // Undo sends the opposite command: move the order back, or defer it again with its old reason.
+  const [undo, setUndo] = useState<{ inverse: Parameters<Dispatch>[0]; label: string } | null>(null);
 
   const q = query.trim().toLowerCase();
   const orders = s.orders.filter((o) => o.depot === depot);
@@ -55,8 +56,14 @@ export default function PlanBoard() {
   const lateRisk = orders.filter((o) => o.decision === "served" && (o.pred_late_prob ?? 0) >= 0.5).length;
 
   const act: Act = (label, a) => {
-    setUndo({ state: s, label });
-    dispatch(a);
+    const ref = "ref" in a ? a.ref : undefined;
+    const before = s.orders.find((o) => o.order_ref === ref);
+    if (before)
+      setUndo({
+        label,
+        inverse: before.decision === "served" ? { type: "move", ref: before.order_ref, vehicle_id: before.vehicle_id!, trip_id: before.trip_id! } : { type: "defer", ref: before.order_ref, reason: before.reason ?? "dispatcher_choice" },
+      });
+    void dispatch(a).catch(() => {});
   };
   const dropCheck = (d: Drop): string[] => (!dragging || d === "defer" ? [] : checkMove(s.orders, dragging, d.vid, d.trip));
   const onDrop = (d: Drop) => {
@@ -91,7 +98,7 @@ export default function PlanBoard() {
         {undo && (
           <Btn
             onClick={() => {
-              dispatch({ type: "load", state: undo.state });
+              void dispatch(undo.inverse).catch(() => {});
               setUndo(null);
             }}
             title={`Undo: ${undo.label}`}

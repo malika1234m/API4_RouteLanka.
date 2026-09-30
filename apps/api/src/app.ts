@@ -103,6 +103,16 @@ export function buildApp() {
     return inboundSms(day.id, body);
   });
 
+  // Demo stand-in for the mobile network: the driver's phone "sends" the SMS, the network delivers it to
+  // the gateway. On a real phone the app opens the SMS composer instead (sms: link to the gateway number).
+  app.post("/api/sms/simulate", async (req) => {
+    if (!config.smsSimulator) throw new HttpError(404, "Not found.");
+    await actor(req, ["driver"]);
+    const { body } = smsSchema.pick({ body: true }).parse(req.body);
+    const day = await currentDay(req);
+    return inboundSms(day.id, body);
+  });
+
   // ── Realtime ──
   app.get("/api/stream", async (req, reply) => {
     const day = await currentDay(req);

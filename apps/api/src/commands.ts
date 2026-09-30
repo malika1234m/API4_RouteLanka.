@@ -78,7 +78,9 @@ const handlers: Handlers = {
     const served = orders.filter((o) => o.decision === "served").length;
     const deferred = orders.length - served;
     const version = day.published ? day.plan_version + 1 : day.plan_version;
-    await tx`UPDATE workspaces SET published = true, plan_version = ${version}, plan_changed_at = ${day.published ? at : null} WHERE id = ${day.id}`;
+    // Publishing starts the night: the demo clock runs from 03:00 now.
+    await tx`UPDATE workspaces SET published = true, plan_version = ${version}, plan_changed_at = ${day.published ? at : null},
+               clock_start = CASE WHEN published THEN clock_start ELSE now() END WHERE id = ${day.id}`;
     await tx`INSERT INTO plan_versions (workspace_id, version, published_at, served, deferred, snapshot)
              VALUES (${day.id}, ${version}, ${at}, ${served}, ${deferred}, ${tx.json(orders.map((o) => ({ ref: o.order_ref, d: o.decision, v: o.vehicle_id ?? null, t: o.trip_id ?? null })) as never)})
              ON CONFLICT (workspace_id, version) DO UPDATE SET published_at = EXCLUDED.published_at, snapshot = EXCLUDED.snapshot`;

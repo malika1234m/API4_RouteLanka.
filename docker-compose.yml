@@ -51,5 +51,29 @@ services:
       seed: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
 
+  notifier:
+    build: { context: ., dockerfile: services/notifier/Dockerfile }
+    environment: *env
+    restart: unless-stopped
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      rabbitmq: { condition: service_healthy }
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    environment:
+      <<: *env
+      PORT: "4000"
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-secret-change-me-in-production-please}
+      SMS_GATEWAY_TOKEN: ${SMS_GATEWAY_TOKEN:-dev-sms-token}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Local `docker compose up` runs with the example secrets; a real deployment sets its own.
+      ALLOW_DEV_SECRETS: ${ALLOW_DEV_SECRETS:-true}
+    ports: ["${API_PORT:-4000}:4000"]
+    restart: unless-stopped
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      rabbitmq: { condition: service_healthy }
+
 volumes:
   pgdata:

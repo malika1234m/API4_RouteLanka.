@@ -9,7 +9,7 @@ import { driverState } from "@/lib/driver";
 import { outletById, seed, tripKey } from "@/lib/seed";
 import { newEvent, useDemo } from "@/lib/store";
 import type { OrderState } from "@/lib/types";
-import { handoverCode } from "@/lib/handover";
+import { codeMatches } from "@routelanka/domain";
 import { useT } from "@/lib/i18n";
 
 type Exc = NonNullable<OrderState["exception"]> | "none";
@@ -31,7 +31,8 @@ export default function StopFlow() {
   const [useSig, setUseSig] = useState(false);
 
   if (!o || !st) return <Shell role="driver" who={seed.personas.driver.name}>{t("Stop not found.")}</Shell>;
-  const codeOk = code === handoverCode(o.order_ref);
+  // The phone holds only a hash of the store's code, so it can check it with no signal.
+  const codeOk = codeMatches(o.order_ref, code, s.codeHashes?.[o.order_ref]);
   const canSave = useSig ? !!name.trim() && signed : codeOk;
   const out = outletById.get(o.outlet_id)!;
   const step = st.stage === "delivered" ? 3 : st.arrivedAt ? 2 : 1;
