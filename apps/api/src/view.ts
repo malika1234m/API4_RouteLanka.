@@ -30,7 +30,7 @@ export async function buildView(day: Day, role?: Role): Promise<DayView> {
     sql<FeedItem[]>`SELECT id, at, actor_role AS role, kind, text, order_ref AS ref, open FROM events
                     WHERE workspace_id = ${ws} AND in_feed ORDER BY seq DESC LIMIT 60`,
     sql`SELECT * FROM driver_status WHERE workspace_id = ${ws} AND vehicle_id = ${day.meta.personas.driver.vehicle_id}`,
-    sql<{ role: Role; lang: Lang }[]>`SELECT role, lang FROM user_prefs WHERE workspace_id = ${ws}`,
+    sql<{ role: Role; lang: Lang }[]>`SELECT DISTINCT ON (role) role, lang FROM users ORDER BY role, created_at`,
     sql`SELECT * FROM fleet_actions WHERE workspace_id = ${ws} ORDER BY at`,
     sql`SELECT id, status, summary, error FROM plan_jobs WHERE workspace_id = ${ws} ORDER BY requested_at DESC LIMIT 1`,
   ]);

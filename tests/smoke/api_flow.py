@@ -53,6 +53,15 @@ for u in ["gehiru.dispatch", "senash.kandydock", "nimsith.veh041", "malika.out02
     ok("/auth/login", {"username": u, "password": os.environ.get("SEED_PASSWORD", "routelanka")})
 step("fresh day, four accounts signed in")
 
+# The language follows the person: it survives a new demo day. The dispatcher's screens stay in English.
+ok("/commands", {"type": "setLang", "role": "store", "lang": "ta"}, "store")
+ok("/day/new", {})
+assert ok("/view", role="store")["lang"]["store"] == "ta", "the store's language should follow the person into a new day"
+ok("/commands", {"type": "setLang", "role": "store", "lang": "en"}, "store")
+status, _ = call("/commands", {"type": "setLang", "role": "dispatcher", "lang": "si"}, "dispatcher")
+assert status == 400, "the dispatcher's office screens stay in English"
+step("language follows the person across demo days; dispatcher stays in English")
+
 status, _ = call("/commands", {"type": "publish"}, "driver")
 assert status == 403, "a driver must not be able to publish the plan"
 step("role guard: driver cannot publish")

@@ -7,10 +7,10 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --workspace web --include-workspace-root=false --ignore-scripts
 # The lockfile is written on macOS, so npm leaves out the Linux builds of Tailwind's native
 # CSS tools (npm/cli#4828). Add the ones for this machine, at the locked versions.
-RUN ARCH=$(node -p "process.arch") && cd apps/web && \
+RUN set -e; ARCH=$(node -p "process.arch") && cd apps/web && \
     npm install --no-save --ignore-scripts --no-package-lock \
-      lightningcss-linux-$ARCH-musl@$(node -p "require('lightningcss/package.json').version") \
-      @tailwindcss/oxide-linux-$ARCH-musl@$(node -p "require('@tailwindcss/oxide/package.json').version")
+      lightningcss-linux-$ARCH-musl@$(node -p "require('./node_modules/lightningcss/package.json').version") \
+      @tailwindcss/oxide-linux-$ARCH-musl@$(node -p "require('./node_modules/@tailwindcss/oxide/package.json').version")
 COPY packages/domain packages/domain
 COPY apps/web apps/web
 ENV NEXT_TELEMETRY_DISABLED=1

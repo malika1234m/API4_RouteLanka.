@@ -260,8 +260,11 @@ const handlers: Handlers = {
     await tx`UPDATE events SET open = false WHERE workspace_id = ${day.id} AND id = ${c.id}`;
   },
 
-  async setLang(tx, day, c) {
-    await tx`INSERT INTO user_prefs (workspace_id, role, lang) VALUES (${day.id}, ${c.role}, ${c.lang}) ON CONFLICT (workspace_id, role) DO UPDATE SET lang = EXCLUDED.lang`;
+  async setLang(tx, _day, c, who) {
+    // Saved on the person's account, so it holds on every device and every demo day.
+    if (c.role !== who.role) throw new HttpError(403, "You can only change your own language.");
+    if (c.role === "dispatcher" && c.lang !== "en") throw new HttpError(400, "The dispatcher's office screens stay in English.");
+    await tx`UPDATE users SET lang = ${c.lang} WHERE id = ${who.uid}`;
   },
 
   async ack(tx, day, c, who) {

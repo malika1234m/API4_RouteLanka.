@@ -133,6 +133,29 @@ async def main():
         assert st.get("stage") == "delivered" and st.get("pod", {}).get("verified"), f"offline delivery did not sync: {st}"
         ok("signal back: the delivery synced by itself and the server verified the code")
 
+        # ---- Driver: no code? name and signature instead (online this time) ----------------------------------------
+        second = run[1] if run[1]["outlet_id"] != first["outlet_id"] else run[2]
+        await drv.goto(BASE + f"/driver/stop/{second['order_ref']}")
+        await drv.get_by_role("button", name="I've arrived").click()
+        await drv.get_by_role("button", name=re.compile("No code")).click()
+        await drv.get_by_placeholder("Name of the person receiving").fill("K. Perera")
+        pad = drv.get_by_label("Signature pad: sign with your finger")
+        await pad.scroll_into_view_if_needed()
+        box = await pad.bounding_box()
+        await drv.mouse.move(box["x"] + 30, box["y"] + 60)
+        await drv.mouse.down()
+        for i in range(12):
+            await drv.mouse.move(box["x"] + 40 + i * 18, box["y"] + 50 + (i % 3) * 15)
+        await drv.mouse.up()
+        await drv.get_by_role("button", name="Save delivery").click()
+        for _ in range(30):
+            st2 = (await view(ctx, "dispatcher"))["states"].get(second["order_ref"], {})
+            if st2.get("stage") == "delivered":
+                break
+            await drv.wait_for_timeout(500)
+        assert st2.get("pod", {}).get("method") == "signature" and st2["pod"].get("name") == "K. Perera", f"signature proof not recorded: {st2}"
+        ok("driver: no code, so a name and signature were taken instead, and the record says so")
+
         # ---- Store: report a problem on receipt -----------------------------------------------------------------
         await phone.goto(BASE + f"/store/receive/{first['order_ref']}")
         await phone.get_by_role("button").filter(has_text="Short").first.click()

@@ -33,6 +33,8 @@ services:
 
   # One-shot: apply migrations, then load the datasets and the demo delivery day.
   seed:
+    # Same image as the engine (one build serves both).
+    image: routelanka/engine:local
     build: { context: ., dockerfile: services/engine/Dockerfile }
     command: ["sh", "-c", "python -m routelanka_engine.migrate && python -m routelanka_engine.seed"]
     environment:
@@ -46,6 +48,7 @@ services:
       postgres: { condition: service_healthy }
 
   engine:
+    image: routelanka/engine:local
     build: { context: ., dockerfile: services/engine/Dockerfile }
     environment: *env
     restart: unless-stopped

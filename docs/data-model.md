@@ -51,14 +51,13 @@ erDiagram
 
 | Table | Key | Contents |
 |---|---|---|
-| `users` | `id`, unique `username` | bcrypt password hash, role (`dispatcher`, `loader`, `driver`, `store`), display name, and the role's scope: depot, `outlet_id` or `vehicle_id` + `trip_id` |
+| `users` | `id`, unique `username` | bcrypt password hash, role (`dispatcher`, `loader`, `driver`, `store`), display name, language (`en`, `si`, `ta`: it follows the person, on every device and demo day), and the role's scope: depot, `outlet_id` or `vehicle_id` + `trip_id` |
 
 ## Day data (per `workspace_id`)
 
 | Table | Key | Contents |
 |---|---|---|
 | `workspaces` | `id` | one demo day: name, service date, demo clock (`clock_start`, `clock_speed`), `published`, `plan_version`, `meta` (personas). One row is the template (`is_template`), one is the default (`is_default`) |
-| `user_prefs` | `workspace_id, role` | language per role (English, Sinhala, Tamil) |
 | `vehicle_day` | `workspace_id, vehicle_id` | status that day (available / in workshop), fuel used this week |
 | `orders` | `workspace_id, order_ref` | the order: outlet, brand, temperature, units, kg, m³, run date, whether skipped yesterday, days since last served |
 | `assignments` | `workspace_id, order_ref` | the plan: served/deferred, reason code, vehicle, trip, stop sequence, planned and predicted arrival, predicted service minutes and late probability, priority |

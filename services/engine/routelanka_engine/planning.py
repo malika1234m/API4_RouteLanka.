@@ -21,11 +21,16 @@ def fmt(m: float) -> str:
 
 
 def predict_service(o: dict, params: dict) -> float:
-    """Predicted handling time: the history's median for the brand and dock type, scaled by order size."""
-    base = params["svc_median"][f"{o['brand']}|{o['dock_type']}"]
-    typical = params["units_median"][f"{o['brand']}|{o['temp_requirement']}"]
-    f = 0.6 + 0.4 * o["order_units"] / typical
-    return round(base * min(max(f, 0.75), 1.5), 1)
+    """Predicted handling time: the outlet's own history (or the brand and dock type's, for an outlet with none),
+    scaled by how this order compares with the outlet's usual size."""
+    own = params.get("outlet_svc", {}).get(o["outlet_id"])
+    if own is not None:
+        base, typical, lo, hi = own, params["outlet_units"][o["outlet_id"]], 0.6, 1.8
+    else:
+        base = params["svc_median"][f"{o['brand']}|{o['dock_type']}"]
+        typical, lo, hi = params["units_median"][f"{o['brand']}|{o['temp_requirement']}"], 0.75, 1.5
+    f = 0.6 + 0.4 * o["order_units"] / max(typical, 1)
+    return round(base * min(max(f, lo), hi), 1)
 
 
 def late_probability(slack_min: float, district_late_rate: float) -> float:
@@ -34,6 +39,9 @@ def late_probability(slack_min: float, district_late_rate: float) -> float:
 
 
 EXHAUSTIVE_STOPS = 7  # up to 7! = 5040 orders per trip; larger trips use pairwise swaps
+# Keep earliest-closing-first unless another order saves at least this many expected late stops. Below it, a new
+# order mostly swaps which store is late, and an order drivers and stores recognise is worth more than that.
+MIN_GAIN = 0.25
 
 
 def _run_stops(stops: list, depart: float, d: dict, brand: str, allowance: dict, params: dict, speed: dict, district: str, late_rate: float):
@@ -66,20 +74,21 @@ def _run_stops(stops: list, depart: float, d: dict, brand: str, allowance: dict,
 def best_stop_order(orders: list, run) -> list:
     """The stop order with the fewest expected late arrivals.
 
-    Starts from earliest-closing window first (a good order on its own) and keeps it unless another order is
-    strictly better: every order for trips of up to EXHAUSTIVE_STOPS stops, pairwise swaps beyond that.
+    Starts from earliest-closing window first (a good order on its own) and keeps it unless another order saves at
+    least MIN_GAIN expected late stops: every order for trips of up to EXHAUSTIVE_STOPS stops, pairwise swaps beyond.
     """
     stops: dict = {}
     for o in sorted(orders, key=lambda o: (hm(o["window_close_time"]), hm(o["window_open_time"]), o["outlet_id"], o["temp_requirement"])):
         stops.setdefault(o["outlet_id"], []).append(o)
-    order = list(stops.values())
-    best = run(order)[0]
+    edd = list(stops.values())
+    edd_cost = run(edd)[0]
+    order, best = edd, edd_cost
     if len(order) <= EXHAUSTIVE_STOPS:
         for perm in itertools.permutations(order):
             cost = run(list(perm))[0]
             if cost < best - 1e-9:
                 best, order = cost, list(perm)
-        return order
+        return order if best <= edd_cost - MIN_GAIN else edd
     improved = True
     while improved:
         improved = False
@@ -89,7 +98,7 @@ def best_stop_order(orders: list, run) -> list:
                 cost = run(cand)[0]
                 if cost < best - 1e-9:
                     best, order, improved = cost, cand, True
-    return order
+    return order if best <= edd_cost - MIN_GAIN else edd
 
 
 def sequence_trips(states: dict, dtravel: dict, allowance: dict, params: dict, monsoon: bool):

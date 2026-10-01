@@ -13,9 +13,6 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /repo/services/notifier/dist ./dist
-COPY services/notifier/package.json ./
-# The domain package is bundled into dist; install only the runtime dependencies.
-RUN node -e "const p=require('./package.json');delete p.devDependencies;require('fs').writeFileSync('package.json',JSON.stringify(p))" \
- && npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
+# dist is one self-contained file (dependencies bundled by tsup): nothing to install here.
 USER node
 CMD ["node", "dist/index.js"]

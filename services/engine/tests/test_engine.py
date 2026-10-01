@@ -117,3 +117,19 @@ def test_peak_day_allocation_passes_the_organisers_checker():
         p = subprocess.run([sys.executable, str(CHECKER), str(out)], capture_output=True, text=True, cwd=CHECKER.parent)
     assert p.returncode == 0, p.stdout + p.stderr
     assert "PASSED" in p.stdout
+
+
+@pytest.mark.skipif(not (DATA / "Training Data/deliveries_train.csv").exists(), reason="needs the datasets")
+def test_capacity_outlook_follows_this_years_festivals():
+    import pandas as pd
+    from routelanka_engine.seed import capacity_outlook
+
+    train = pd.read_csv(DATA / "Training Data/deliveries_train.csv")
+    t1 = pd.read_csv(DATA / "Test Data/task1_test_inputs.csv")
+    cal = pd.read_csv(DATA / "General Data/calendar.csv")
+    out = pd.DataFrame(capacity_outlook(train, t1, cal))
+    assert len(out) == 20 and set(out.iso_week) == set(range(17, 27))
+    p = out[out.depot == "Peliyagoda"].set_index("iso_week")
+    # Poson (30 May 2026) is in week 22: the run-up lifts that week above its neighbours.
+    assert p.loc[22, "total"] > p.loc[21, "total"] and p.loc[22, "total"] > p.loc[23, "total"]
+    assert (out.chilled <= out.total).all()

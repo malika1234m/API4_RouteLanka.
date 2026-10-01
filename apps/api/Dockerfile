@@ -13,10 +13,7 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /repo/apps/api/dist ./dist
-COPY apps/api/package.json ./
-# The domain package is bundled into dist; install only the runtime dependencies.
-RUN node -e "const p=require('./package.json');delete p.devDependencies;require('fs').writeFileSync('package.json',JSON.stringify(p))" \
- && npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
+# dist is one self-contained file (dependencies bundled by tsup): nothing to install here.
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD wget -qO- http://127.0.0.1:4000/api/health || exit 1

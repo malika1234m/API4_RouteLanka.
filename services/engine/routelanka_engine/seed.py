@@ -19,6 +19,7 @@ import pandas as pd
 import psycopg
 from psycopg.types.json import Jsonb
 
+from . import forecast
 from .planning import hm, propose
 
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
@@ -55,11 +56,20 @@ def measure_params(train, legs, outlets, traffic) -> dict:
     svc = dd.groupby(["brand", "dock_type"]).svc.median()
     units = dd.groupby(["brand", "temp_requirement"]).order_units.median()
     late = dd.assign(late=dd.arrival_time.map(hm) > dd.window_close_time.map(hm)).groupby("district").late.mean()
+    # Each outlet's own handling time, shrunk towards its brand and dock type when it has few visits (n/(n+20)).
+    # The outlet is the strongest single predictor (Datathon Task 1): error 4.7 min against 6.2 for brand+dock.
+    g = dd.groupby("outlet_id")
+    n, own = g.size(), g.svc.median()
+    prior = g.apply(lambda t: svc[(t.brand.iloc[0], t.dock_type.iloc[0])], include_groups=False)
+    outlet_svc = (n * own + 20 * prior) / (n + 20)
+    outlet_units = g.order_units.median()
     speed = lambda m: {f"{r.district}|{r.hour}": float(r.speed_index) for r in traffic[traffic.monsoon == m].itertuples()}
     return dict(
         svc_median={f"{b}|{d}": float(v) for (b, d), v in svc.items()},
         units_median={f"{b}|{t}": float(v) for (b, t), v in units.items()},
         district_late_rate={k: float(v) for k, v in late.items()},
+        outlet_svc={k: round(float(v), 1) for k, v in outlet_svc.items()},
+        outlet_units={k: float(v) for k, v in outlet_units.items()},
         speed_dry=speed(0),
         speed_monsoon=speed(1),
     )
@@ -83,10 +93,16 @@ def outlet_history(train, legs) -> dict:
 
 
 def capacity_outlook(train, t1, cal) -> list:
-    """Ten weeks ahead: same week last year x this year's growth, against demonstrated refrigerated capacity."""
-    allo = pd.concat([train, t1]).merge(cal[["date", "iso_year", "iso_week"]], left_on="order_date", right_on="date")
-    allo["chilled"] = allo.order_volume_m3.where(allo.temp_requirement == "chilled", 0)
-    wk = allo.groupby(["depot", "iso_year", "iso_week"]).agg(total=("order_volume_m3", "sum"), chilled=("chilled", "sum")).reset_index()
+    """Ten weeks ahead from the demo day, per depot: the Datathon demand model's forecast of total and chilled
+    volume, against the chilled volume the refrigerated fleet has actually moved on its busiest days."""
+    orders = forecast.orders_for_demand(train, t1)
+    daily = forecast.daily_frame(orders, cal)
+    total_m, chilled_m = forecast.DemandModel("total").fit(daily), forecast.DemandModel("chilled").fit(daily)
+    weeks = pd.DataFrame({"iso_year": 2026, "iso_week": range(17, 27)})
+    fut = forecast.future_frame(orders[["depot", "brand"]].drop_duplicates(), cal, weeks)
+    wk = forecast.weekly(fut, dict(total=total_m.predict_daily(fut), chilled=chilled_m.predict_daily(fut)))
+    wk = wk.groupby(["depot", "iso_year", "iso_week"], as_index=False)[["total", "chilled"]].sum().set_index(["depot", "iso_week"])
+
     disp = train[(train.dispatch_status == "attempted") & (train.temp_requirement == "chilled")]
     defer_days = set(train[train.dispatch_status != "attempted"].order_date)
     day_cap = disp[disp.order_date.isin(defer_days)].groupby(["depot", "order_date"]).order_volume_m3.sum().groupby("depot").quantile(0.9).to_dict()
@@ -95,15 +111,10 @@ def capacity_outlook(train, t1, cal) -> list:
     pay = cal[cal.is_payday == 1].groupby(["iso_year", "iso_week"]).size().to_dict()
     out = []
     for depot in ["Peliyagoda", "Kandy"]:
-        w = wk[wk.depot == depot].set_index(["iso_year", "iso_week"])
-        recent = w.loc[(2026, 1):(2026, 13)] if (2026, 1) in w.index else w.tail(13)
-        same_ly = w.loc[[(2025, i) for i in range(1, 14) if (2025, i) in w.index]]
-        growth = recent.total.mean() / same_ly.total.mean()
         for wkno in range(17, 27):
-            ly = w.loc[(2025, wkno)] if (2025, wkno) in w.index else recent.mean()
             od = opdays.get((2026, wkno), 6)
-            scale = growth * od / max(opdays.get((2025, wkno), 6), 1)
-            out.append(dict(depot=depot, iso_year=2026, iso_week=wkno, total=round(ly.total * scale), chilled=round(ly.chilled * scale),
+            f = wk.loc[(depot, wkno)]
+            out.append(dict(depot=depot, iso_year=2026, iso_week=wkno, total=round(float(f.total)), chilled=round(float(f.chilled)),
                             chilled_capacity=round(day_cap.get(depot, 0) * od), operating_days=od,
                             festival=fest.get((2026, wkno), ""), paydays=pay.get((2026, wkno), 0)))
     return out

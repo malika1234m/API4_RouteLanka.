@@ -121,9 +121,18 @@ Event-driven services around one shared record. Details: [docs/architecture.md](
 * **Planning engine.** Allocation is priority-greedy with every rule checked: chilled and repeat-skipped outlets
   first, scarce vehicles (reefers, vans) kept for the orders only they can carry, and a reason code for every
   deferral. The organisers' `check_allocation.py` passes on scenario S1. Within each trip the engine then tries
-  every order of the stops (pairwise swaps above 7 stops) and keeps the one with the fewest expected late
-  arrivals. Predictions come from traffic by hour and measured handling times. On the seeded night that cuts
-  expected late stops from 27.6 to 19.0 against earliest-closing-window-first.
+  every order of the stops (pairwise swaps above 7 stops). It keeps the one with the fewest expected late
+  arrivals when that saves at least a quarter of a late stop; otherwise it keeps earliest-closing-window-first,
+  an order drivers and stores recognise. Predictions come from traffic by hour and each outlet's measured
+  handling time. On the seeded night that cuts expected late stops from 29.5 to 20.6, and stops at 50%+ risk
+  from 30 to 18.
+* **One product across all three phases.** The *Capacity outlook* is our Datathon demand model (Task 2A),
+  trained by the seed job on the order history. It predicts each day from the calendar (festival run-up, paydays,
+  closed days) and adds the days up into weeks. Festivals move between weeks every year, so last year's week puts
+  the peak in the wrong place: for 2026 the old method expected the chilled peak in week 19, where Vesak fell in
+  2025, while the model finds the real squeezes in weeks 18 (Vesak) and 22 (Poson). Backtest error 3.7% against
+  9.5% for same-week-last-year. The engine's handling-time prediction uses each outlet's own history, the
+  strongest predictor in our Datathon work (error 4.7 min against 6.2 for brand and dock type).
 * **Server-side rules.** The API re-checks every change: a plan that breaks a rule can't be published, a stop
   that has left the depot can't be re-planned from the board, and a stop handed to another vehicle on the road
   needs a vehicle that can carry it (depot, refrigeration, van-only access, not in the workshop). Store orders
@@ -179,6 +188,8 @@ python tests/e2e/map.py                          # check-in map: keeps the user'
 | Handover code shown as a fixed example | Random code per stop at publish. The phone holds only a hash and the server re-checks it | A fixed code proves nothing |
 | Demo clock ran from load | Clock holds at 03:00 until the plan is published | The night starts when the plan is final |
 | Prototype state in the browser | Shared state in PostgreSQL, events through RabbitMQ, live updates by SSE | Four people on four devices see the same night |
+| Outlook used same-week-last-year as a placeholder ("the Datathon demand model replaces it in the build") | The Datathon demand model, trained at seed time | As the prototype said it would |
+| Language chosen per demo day in the prototype | Saved on each person's account | "The language follows the person, not the device" |
 | Planner ran once at build time | Planner runs as a queue worker on request (*Re-plan*) | A slow plan never blocks the app |
 
 ## 7. Demo affordances and security notes

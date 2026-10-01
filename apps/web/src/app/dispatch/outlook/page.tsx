@@ -84,7 +84,7 @@ export default function Outlook() {
               <DepotChart key={d} depot={d} weeks={seed.outlook.filter((w) => w.depot === d)} />
             ))}
           </div>
-          <p className="mt-3 text-xs text-mute">Prototype forecast: same week last year × this year&apos;s growth, adjusted for operating days. The Datathon demand model replaces it in the build.</p>
+          <p className="mt-3 text-xs text-mute">Forecast by our Datathon demand model: it predicts each day from the calendar (festival run-up, paydays, closed days) with a growth trend, then adds the days up. Festivals move between weeks every year (Vesak was week 20 in 2025, week 18 this year), so copying last year&apos;s week puts the peak in the wrong week. In three 10-week backtests the model was off by 3.7% of weekly volume, against 9.5% for same-week-last-year.</p>
         </div>
         <aside className="space-y-3 xl:sticky xl:top-28 xl:self-start">
           <Card>
