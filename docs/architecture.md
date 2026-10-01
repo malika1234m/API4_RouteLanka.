@@ -26,6 +26,7 @@ flowchart LR
   ENGINE["Planning engine worker (Python)<br/>allocation · stop sequence · ETAs"]
   NOTIFY["Notifier worker (TypeScript)<br/>WhatsApp and SMS messages"]
   SEED["Seed job (Python)<br/>datasets → PostgreSQL"]
+  WA["WhatsApp Cloud API<br/>(Meta, or the bundled simulator)"]
 
   WEB -- "HTTPS: commands, queries, /sync" --> Core
   SSE -- "event stream" --> WEB
@@ -38,6 +39,8 @@ flowchart LR
   ENGINE --> DB
   MQ -- "domain events" --> NOTIFY
   NOTIFY --> DB
+  NOTIFY -- "send (templates, reply buttons)" --> WA
+  WA -- "signed webhooks: statuses, taps" --> Core
   MQ -- "all events (per API instance)" --> SSE
   SEED --> DB
 ```
@@ -48,6 +51,7 @@ flowchart LR
 | **API service** (`apps/api`) | Sign-in, role checks, every command (publish, load, deliver, …) and every query. Writes state and the matching event in one transaction. | The single place that enforces the operating rules and owns the database. |
 | **Planning engine** (`services/engine`) | Proposes the allocation: orders → vehicles and trips, deferrals with reasons, stop order, predicted arrival. | CPU-bound and written in Python (the same engine validated with the organisers' `check_allocation.py`). Runs as a queue worker so a slow plan never blocks the API. |
 | **Notifier** (`services/notifier`) | Turns domain events into store messages (WhatsApp) and driver SMS, in each person's language. | Messaging is a side effect. If it is slow or down, planning and delivery keep working; messages catch up. |
+| **WhatsApp** (`services/notifier/src/whatsapp.ts`, `apps/api/src/whatsapp.ts`, `services/wa-sim`) | Sends store messages through the WhatsApp Business Platform. Signed webhooks bring back delivery ticks and one-tap replies, which run as normal commands. A Cloud API simulator plays Meta for the demo; see [whatsapp.md](whatsapp.md). | The messages table is an outbox, so WhatsApp being slow or down never blocks planning; the webhook is a public endpoint and is guarded by signatures, de-duplication and per-store scope. |
 | **Seed job** (`services/engine`, `seed` command) | Loads the shared datasets and one realistic delivery day on a fresh install. | Runs once at start-up, then exits. |
 | **PostgreSQL** | The shared record. | |
 | **RabbitMQ** | Carries commands to workers and fans events out to every consumer. | Decouples the roles: the loader's flag reaches the dispatcher, the notifier and every open screen without the API calling each of them. |
