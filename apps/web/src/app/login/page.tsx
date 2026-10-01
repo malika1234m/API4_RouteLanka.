@@ -97,7 +97,7 @@ export default function Login() {
           </Card>
         </div>
         <p className="mt-4 text-center text-xs text-white/60">
-          This prototype runs a sample night, Friday 24 April, in your browser.{" "}
+          A sample night, Friday 24 April, shared by all four roles.{" "}
           <button
             onClick={() => {
               dispatch({ type: "reset" });
@@ -105,7 +105,7 @@ export default function Login() {
             }}
             className="underline hover:text-white"
           >
-            {fresh ? "Started again from the beginning" : "Start the night again"}
+            {fresh ? "New demo day started" : "Start a new demo day"}
           </button>
         </p>
       </div>

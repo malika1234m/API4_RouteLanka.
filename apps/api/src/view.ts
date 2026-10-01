@@ -69,13 +69,19 @@ export async function buildView(day: Day, role?: Role): Promise<DayView> {
     const k = `${o.vehicle_id}#${o.trip_id}`;
     stops.set(k, [...(stops.get(k) ?? []), o.order_ref]);
   }
+  const byRef = new Map(orders.map((o) => [o.order_ref, o]));
+  const sum = (refs: string[], f: (o: Order) => number) => Math.round(refs.reduce((n, r) => n + Number(f(byRef.get(r)!)), 0) * 1000) / 1000;
   const ready: Record<string, boolean> = {};
   const departed: Record<string, string> = {};
   const tripsOut: Trip[] = trips.map((t) => {
     const k = `${t.vehicle_id}#${t.trip_id}`;
     if (t.ready_at) ready[k] = true;
     if (t.departed_at) departed[k] = t.departed_at;
-    return { vehicle_id: t.vehicle_id, trip_id: t.trip_id, brand: t.brand, district: t.district, depot: t.depot, stops: stops.get(k) ?? [], depart: t.depart, minutes: t.minutes, volume_m3: 0, weight_kg: 0, km: t.km, fuel_l: t.fuel_l };
+    const refs = stops.get(k) ?? [];
+    return {
+      vehicle_id: t.vehicle_id, trip_id: t.trip_id, brand: t.brand, district: t.district, depot: t.depot, stops: refs, depart: t.depart, minutes: t.minutes,
+      volume_m3: sum(refs, (o) => o.order_volume_m3), weight_kg: sum(refs, (o) => o.order_weight_kg), km: t.km, fuel_l: t.fuel_l,
+    };
   });
 
   const d = driverRows[0];

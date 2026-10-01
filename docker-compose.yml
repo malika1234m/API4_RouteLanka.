@@ -75,5 +75,15 @@ services:
       seed: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
 
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args: { API_URL: "http://api:4000" }
+    ports: ["${WEB_PORT:-3000}:3000"]
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+
 volumes:
   pgdata:

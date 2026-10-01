@@ -93,6 +93,15 @@ export default function PlanBoard() {
         <div className="mr-auto">
           <h1 className="font-cond text-2xl font-bold leading-tight">Plan board</h1>
           <p className="text-sm text-mute">{s.published ? `Published · version ${s.planVersion}${s.planChangedAt ? `, changed ${s.planChangedAt}` : ""}` : "Proposed by the planner. Drag orders to adjust, then publish."}</p>
+          {!s.published && s.planJob && (
+            <p className="text-xs text-mute" aria-live="polite">
+              {s.planJob.status === "done" && s.planJob.summary
+                ? `Last planner run: ${s.planJob.summary.served} served, ${s.planJob.summary.deferred} deferred, ${s.planJob.summary.trips} trips in ${s.planJob.summary.ms} ms`
+                : s.planJob.status === "failed"
+                  ? `Planner failed: ${s.planJob.error ?? "unknown error"}`
+                  : `Planner job ${s.planJob.status}…`}
+            </p>
+          )}
         </div>
         <DepotToggle depot={depot} onChange={setDepot} />
         {undo && (
@@ -104,6 +113,15 @@ export default function PlanBoard() {
             title={`Undo: ${undo.label}`}
           >
             Undo
+          </Btn>
+        )}
+        {!s.published && (
+          <Btn
+            disabled={s.planJob?.status === "queued" || s.planJob?.status === "running"}
+            onClick={() => void dispatch({ type: "proposePlan" }).catch(() => {})}
+            title="Sends a planning job over RabbitMQ to the planning engine. Replaces the current draft, including your moves."
+          >
+            {s.planJob?.status === "queued" || s.planJob?.status === "running" ? "Planner working…" : "Re-plan"}
           </Btn>
         )}
         <Btn variant="primary" disabled={allViolations.length > 0} onClick={() => dispatch({ type: "publish" })} title={allViolations.length ? "Fix rule violations first" : undefined}>

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const API_URL = process.env.API_URL ?? "http://localhost:4000";
@@ -9,6 +10,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@routelanka/domain"],
   // Standalone output keeps the Docker image small.
   output: "standalone",
+  // Trace files from the monorepo root, so the shared domain package is included.
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   // Browser calls go to /api on the same origin, so session cookies stay first-party.
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
