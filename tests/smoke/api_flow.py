@@ -45,8 +45,10 @@ cmd = lambda role, **c: ok("/commands", c, role)
 step = lambda s: print("  ok ", s)
 
 ok("/day/new", {})
-status, _ = call("/view", role="dispatcher")
-assert status == 401, "views need a signed-in account"
+anon = ok("/view", role="store")
+assert not anon.get("codes") and not anon.get("codeHashes"), "no secrets without a signed-in account"
+status, _ = call("/commands", {"type": "publish"}, "dispatcher")
+assert status == 401, "commands need a signed-in account"
 for u in ["gehiru.dispatch", "senash.kandydock", "nimsith.veh041", "malika.out029"]:
     ok("/auth/login", {"username": u, "password": os.environ.get("SEED_PASSWORD", "routelanka")})
 step("fresh day, four accounts signed in")

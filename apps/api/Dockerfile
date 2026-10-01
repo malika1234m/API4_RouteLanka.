@@ -19,5 +19,5 @@ RUN node -e "const p=require('./package.json');delete p.devDependencies;require(
  && npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
 USER node
 EXPOSE 4000
-HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD wget -qO- http://localhost:4000/api/health || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD wget -qO- http://127.0.0.1:4000/api/health || exit 1
 CMD ["node", "dist/index.js"]
