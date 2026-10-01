@@ -12,6 +12,7 @@ import { isConnected } from "./mq";
 import { watch } from "./realtime";
 import { commandSchema, loginSchema, smsSchema, syncSchema } from "./schemas";
 import { inboundSms, syncRecords } from "./sync";
+import { httpCache } from "./http-cache";
 import { buildReference, buildView } from "./view";
 
 const DAY_COOKIE = "rl_day";
@@ -25,6 +26,7 @@ async function currentDay(req: FastifyRequest) {
 export function buildApp() {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, trustProxy: true });
   app.register(cookie);
+  httpCache(app);
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });

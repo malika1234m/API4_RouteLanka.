@@ -6,7 +6,7 @@
  *   4. appends the domain event (the outbox) that tells every other role.
  * The API never calls the notifier or other screens directly: the event does that.
  */
-import { checkMove, planViolations, tripKey, type Command, type District, type Order, type RuleRef, type Vehicle } from "@routelanka/domain";
+import { cannotCarry, checkMove, planViolations, tripKey, type Command, type District, type Order, type RuleRef, type Vehicle } from "@routelanka/domain";
 import { randomInt } from "node:crypto";
 import type { Account } from "./auth";
 import { HttpError } from "./auth";
@@ -45,8 +45,8 @@ async function planState(tx: Tx, day: Day) {
 
 async function orderOf(tx: Tx, day: Day, ref: string) {
   const [o] = await tx<(Order & { stage: string; load_flag: { qty: number; kind: string } | null; reassigned_to: string | null; deferred_en_route: string | null; handover_code: string | null })[]>`
-    SELECT o.*, a.decision, a.vehicle_id, a.trip_id, a.stop_seq, a.pred_window, p.stage, p.load_flag, p.reassigned_to, p.deferred_en_route, p.handover_code
-    FROM orders o JOIN assignments a USING (workspace_id, order_ref) JOIN order_progress p USING (workspace_id, order_ref)
+    SELECT o.*, t.dock_type, t.parking_constraint, a.decision, a.vehicle_id, a.trip_id, a.stop_seq, a.pred_window, p.stage, p.load_flag, p.reassigned_to, p.deferred_en_route, p.handover_code
+    FROM orders o JOIN outlets t USING (outlet_id) JOIN assignments a USING (workspace_id, order_ref) JOIN order_progress p USING (workspace_id, order_ref)
     WHERE o.workspace_id = ${day.id} AND o.order_ref = ${ref}`;
   if (!o) throw new HttpError(404, `Order ${ref} is not on this run.`);
   return o;
@@ -73,8 +73,12 @@ const handlers: Handlers = {
         stage = CASE WHEN a.decision = 'served' AND p.stage = 'ordered' THEN 'planned' WHEN a.decision = 'deferred' THEN 'ordered' ELSE p.stage END,
         deferred = (a.decision = 'deferred')
       FROM assignments a WHERE a.workspace_id = p.workspace_id AND a.order_ref = p.order_ref AND p.workspace_id = ${day.id}`;
-    for (const o of orders.filter((x) => x.decision === "served"))
-      await tx`UPDATE order_progress SET handover_code = ${newCode()} WHERE workspace_id = ${day.id} AND order_ref = ${o.order_ref} AND handover_code IS NULL`;
+    // One random code per served stop that has none yet, in a single statement.
+    const servedRefs = orders.filter((x) => x.decision === "served").map((x) => x.order_ref);
+    if (servedRefs.length)
+      await tx`UPDATE order_progress p SET handover_code = c.code
+               FROM unnest(${servedRefs}::text[], ${servedRefs.map(newCode)}::text[]) AS c(ref, code)
+               WHERE p.workspace_id = ${day.id} AND p.order_ref = c.ref AND p.handover_code IS NULL`;
     const served = orders.filter((o) => o.decision === "served").length;
     const deferred = orders.length - served;
     const version = day.published ? day.plan_version + 1 : day.plan_version;
@@ -104,11 +108,16 @@ const handlers: Handlers = {
     const { orders, ref } = await planState(tx, day);
     const o = orders.find((x) => x.order_ref === c.ref);
     if (!o) throw new HttpError(404, `Order ${c.ref} is not on this run.`);
+    await requireChangeable(tx, day, c.ref);
+    const [gone] = await tx`SELECT 1 FROM trips WHERE workspace_id = ${day.id} AND vehicle_id = ${c.vehicle_id} AND trip_id = ${c.trip_id} AND departed_at IS NOT NULL`;
+    if (gone) throw new HttpError(409, `${c.vehicle_id} trip ${c.trip_id} has already left the depot.`);
     const problems = checkMove(ref, orders, c.ref, c.vehicle_id, c.trip_id);
     if (problems.length) throw new HttpError(409, problems[0]);
     const [{ seq }] = await tx<{ seq: number }[]>`SELECT coalesce(max(stop_seq), 0) + 1 AS seq FROM assignments WHERE workspace_id = ${day.id} AND vehicle_id = ${c.vehicle_id} AND trip_id = ${c.trip_id}`;
     await tx`UPDATE assignments SET decision = 'served', reason = NULL, vehicle_id = ${c.vehicle_id}, trip_id = ${c.trip_id}, stop_seq = ${seq}
              WHERE workspace_id = ${day.id} AND order_ref = ${c.ref}`;
+    // Goods already on the old vehicle have to be loaded again on the new one.
+    await tx`UPDATE order_progress SET stage = 'planned' WHERE workspace_id = ${day.id} AND order_ref = ${c.ref} AND stage = 'loaded'`;
     await ensureTrip(tx, day, c.vehicle_id, c.trip_id, o);
     await dropEmptyTrips(tx, day);
     await bumpPlan(tx, day);
@@ -117,6 +126,8 @@ const handlers: Handlers = {
 
   async defer(tx, day, c, who) {
     const o = await orderOf(tx, day, c.ref);
+    await requireChangeable(tx, day, c.ref);
+    await tx`UPDATE order_progress SET stage = 'ordered' WHERE workspace_id = ${day.id} AND order_ref = ${c.ref} AND stage IN ('planned', 'loaded')`;
     await tx`UPDATE assignments SET decision = 'deferred', reason = ${c.reason}, vehicle_id = NULL, trip_id = NULL, stop_seq = NULL WHERE workspace_id = ${day.id} AND order_ref = ${c.ref}`;
     await dropEmptyTrips(tx, day);
     await bumpPlan(tx, day);
@@ -146,6 +157,7 @@ const handlers: Handlers = {
 
   async shortfallDecision(tx, day, c, who) {
     const o = await orderOf(tx, day, c.ref);
+    if (!o.load_flag) throw new HttpError(409, `Nothing was flagged for ${o.outlet_id}.`);
     const label = { send_short: "Send short", hold: "Hold 15 min for restock", defer_rest: "Defer the remainder" }[c.decision];
     await tx`UPDATE order_progress SET load_decision = ${c.decision}, stage = 'loaded' WHERE workspace_id = ${day.id} AND order_ref = ${c.ref}`;
     await tx`UPDATE events SET open = false WHERE workspace_id = ${day.id} AND order_ref = ${c.ref} AND type = 'load.flagged'`;
@@ -153,7 +165,10 @@ const handlers: Handlers = {
   },
 
   async ready(tx, day, c, who) {
+    requirePublished(day);
     const [vid, trip] = splitKey(c.key);
+    const [t] = await tx`SELECT 1 FROM trips WHERE workspace_id = ${day.id} AND vehicle_id = ${vid} AND trip_id = ${trip}`;
+    if (!t) throw new HttpError(404, "This trip is not in the plan.");
     const open = await tx`SELECT 1 FROM order_progress p JOIN assignments a USING (workspace_id, order_ref)
                           WHERE p.workspace_id = ${day.id} AND a.vehicle_id = ${vid} AND a.trip_id = ${trip} AND a.decision = 'served'
                             AND (p.stage = 'planned' OR (p.load_flag IS NOT NULL AND p.load_decision IS NULL))`;
@@ -193,6 +208,7 @@ const handlers: Handlers = {
 
   async reassign(tx, day, c, who) {
     const o = await orderOf(tx, day, c.ref);
+    await requireCarrier(tx, day, c.to, o);
     await tx`UPDATE order_progress SET reassigned_to = ${c.to} WHERE workspace_id = ${day.id} AND order_ref = ${c.ref} AND stage NOT IN ('delivered', 'received')`;
     await bumpPlan(tx, day);
     await appendEvent(tx, day.id, now(day), { type: "stop.reassigned", role: who.role, kind: "decision", ref: c.ref, text: `${o.outlet_id} moved to ${c.to}. The original driver will be told when their phone reconnects.`, payload: { to: c.to } });
@@ -221,10 +237,13 @@ const handlers: Handlers = {
     const lines = c.lines.filter((l) => l.units > 0);
     if (!lines.length) throw new HttpError(400, "Add at least one item.");
     if (out.brand !== "Fresh" && lines.some((l) => l.temp === "chilled")) throw new HttpError(400, "Only Fresh outlets order chilled goods.");
-    // Orders for the next operating day; after the 16:00 cutoff they join the run after that.
-    const [{ run_date }] = await tx<{ run_date: string }[]>`
-      SELECT min(date)::text AS run_date FROM calendar WHERE is_operating AND date > ${day.service_date}::date`;
+    // Orders are for the next operating day; after the 16:00 cutoff they join the run after that.
     const at = now(day);
+    const next = await tx<{ date: string }[]>`
+      SELECT date::text FROM calendar WHERE is_operating AND date > ${day.service_date}::date ORDER BY date LIMIT 2`;
+    const afterCutoff = at >= ORDER_CUTOFF;
+    const run_date = next[afterCutoff ? 1 : 0]?.date ?? next[0]?.date;
+    if (!run_date) throw new HttpError(409, "No delivery day is open for orders.");
     const refs: string[] = [];
     for (const l of lines) {
       const [{ n }] = await tx<{ n: number }[]>`SELECT count(*)::int AS n FROM orders WHERE workspace_id = ${day.id} AND source = 'store'`;
@@ -234,7 +253,7 @@ const handlers: Handlers = {
       refs.push(ref);
       await appendEvent(tx, day.id, at, { type: "order.placed", role: who.role, ref, text: `New order ${ref} confirmed for the next run`, payload: { outlet_id: out.outlet_id, units: l.units, temp: l.temp, run_date } });
     }
-    return { refs, run_date, at };
+    return { refs, run_date, at, afterCutoff };
   },
 
   async resolve(tx, day, c) {
@@ -270,6 +289,19 @@ const handlers: Handlers = {
 
   async planDelay(tx, day, c, who) {
     const at = now(day);
+    const vid = day.meta.personas.driver.vehicle_id;
+    const run = await tx<(Order & { stage: string })[]>`
+      SELECT o.order_ref, o.depot, o.temp_requirement, t.parking_constraint FROM orders o JOIN outlets t USING (outlet_id)
+      JOIN assignments a USING (workspace_id, order_ref) WHERE o.workspace_id = ${day.id} AND a.vehicle_id = ${vid} AND a.decision = 'served'`;
+    const onRun = new Map(run.map((o) => [o.order_ref, o]));
+    for (const [ref, choice] of Object.entries(c.plan)) {
+      const o = onRun.get(ref);
+      if (!o) throw new HttpError(400, `${ref} is not on ${vid}'s run.`);
+      if (choice === "move") {
+        if (!c.moveTo) throw new HttpError(400, "Choose the vehicle that takes the moved stops.");
+        await requireCarrier(tx, day, c.moveTo, o);
+      }
+    }
     for (const [ref, choice] of Object.entries(c.plan)) {
       await tx`UPDATE order_progress SET delay_choice = ${choice},
                  reassigned_to = CASE WHEN ${choice} = 'move' THEN ${c.moveTo ?? null} ELSE reassigned_to END,
@@ -293,6 +325,25 @@ const handlers: Handlers = {
       : { type: "store.replied", role: who.role, ref: c.ref, text: `${o.outlet_id} will wait for the late delivery`, payload: { reply: c.reply } });
   },
 };
+
+/** Orders close at 16:00 for the next operating day's run. */
+const ORDER_CUTOFF = "16:00";
+
+/** A stop that has left the depot can't be re-planned from the board; use the delay plan or reassignment. */
+async function requireChangeable(tx: Tx, day: Day, ref: string) {
+  const [p] = await tx<{ stage: string }[]>`SELECT stage FROM order_progress WHERE workspace_id = ${day.id} AND order_ref = ${ref}`;
+  if (p && ["on_road", "delivered", "received"].includes(p.stage))
+    throw new HttpError(409, "This order has already left the depot. Change it from Live runs instead.");
+}
+
+/** The vehicle taking over a stop on the road must be able to carry it. */
+async function requireCarrier(tx: Tx, day: Day, vehicleId: string, o: Pick<Order, "depot" | "temp_requirement" | "parking_constraint">) {
+  const [v] = await tx<Vehicle[]>`
+    SELECT v.vehicle_id, v.type, v.temp, v.weight_cap_kg, v.volume_cap_m3, v.km_per_l, v.weekly_fuel_quota_l, v.depot, d.status, d.fuel_used_l
+    FROM vehicles v JOIN vehicle_day d USING (vehicle_id) WHERE d.workspace_id = ${day.id} AND v.vehicle_id = ${vehicleId}`;
+  const why = cannotCarry(v, o);
+  if (why) throw new HttpError(409, why);
+}
 
 function requirePublished(day: Day) {
   if (!day.published) throw new HttpError(409, "Tonight's plan isn't published yet.");

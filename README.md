@@ -16,7 +16,7 @@ Each role's action reaches the others straight away, through a message broker.
 
 ## 1. Run it
 
-Requirements: Docker with Compose v2, and the competition datasets.
+Requirements: Docker with Compose v2, and the competition datasets. (Node 20 or newer only for local development without Docker; the images run Node 22 LTS.)
 
 ```bash
 # 1. Put the datasets in ./data (git-ignored):  data/General Data, data/Training Data, data/Test Data
@@ -118,6 +118,18 @@ Event-driven services around one shared record. Details: [docs/architecture.md](
 * **Offline-first driver.** IndexedDB outbox, service worker, replays keyed by a client UUID. The server re-checks handover codes on sync.
 * **One rulebook.** The operating rules live in `packages/domain` and are shared by the web app and the API. The
   Python engine applies the same rules and passes the organisers' `check_allocation.py`.
+* **Planning engine.** Allocation is priority-greedy with every rule checked: chilled and repeat-skipped outlets
+  first, scarce vehicles (reefers, vans) kept for the orders only they can carry, and a reason code for every
+  deferral. The organisers' `check_allocation.py` passes on scenario S1. Within each trip the engine then tries
+  every order of the stops (pairwise swaps above 7 stops) and keeps the one with the fewest expected late
+  arrivals. Predictions come from traffic by hour and measured handling times. On the seeded night that cuts
+  expected late stops from 27.6 to 19.0 against earliest-closing-window-first.
+* **Server-side rules.** The API re-checks every change: a plan that breaks a rule can't be published, a stop
+  that has left the depot can't be re-planned from the board, and a stop handed to another vehicle on the road
+  needs a vehicle that can carry it (depot, refrigeration, van-only access, not in the workshop). Store orders
+  close at 16:00 for the next operating day.
+* **Light on the phone.** JSON is gzipped (the day view is about 9 KB instead of 100 KB) and carries an ETag,
+  so an unchanged refetch is a `304` with no body. Sinhala and Tamil fonts load only when used.
 * **Graceful degradation.** If the notifier or engine is down, planning and delivery keep working, and messages and jobs
   catch up from the queue. If the data signal is gone, the driver keeps working and reports delays by SMS.
 

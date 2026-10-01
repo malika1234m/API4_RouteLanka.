@@ -21,7 +21,10 @@ const sql = postgres(process.env.DATABASE_URL ?? "postgres://routelanka:routelan
 type Tx = postgres.TransactionSql;
 const RABBIT = process.env.RABBITMQ_URL ?? "amqp://routelanka:routelanka@localhost:5672/";
 const QUEUE = "notifier.events";
-const KEYS = ["day.created", "order.placed", "plan.published", "load.decided", "trip.departed", "delay.planned", "store.replied", "store.acknowledged", "stop.delivered", "receipt.confirmed"];
+const KEYS = ["day.created", "order.placed", "plan.published", "load.decided", "trip.departed", "delay.planned", "store.replied", "store.acknowledged", "stop.delivered", "receipt.confirmed", "stop.reassigned"];
+
+/** "2026-04-25" -> "Saturday 25 April": the form the store's messages (and their translations) use. */
+const dayName = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).replace(",", "");
 
 interface Event {
   id: string;
@@ -61,13 +64,26 @@ async function handle(tx: Tx, e: Event) {
       return write(tx, e, os.map((o) => T.received(o, "Yesterday", "Friday 24 April", "15:12")));
     }
     case "order.placed":
-      return write(tx, e, [T.received(await one(), "Today", "Saturday 25 April", e.at)]);
+      return write(tx, e, [T.received(await one(), "Today", dayName(String(e.payload.run_date)), e.at)]);
     case "plan.published": {
-      if (e.payload.republish) return; // stores already have their messages; changes are sent by the events that make them
-      const [d] = await tx<{ service_date: string }[]>`SELECT service_date::text FROM workspaces WHERE id = ${e.workspace_id}`;
       const os = (await orders(tx, e.workspace_id)).filter((o) => o.decision);
-      void d;
-      return write(tx, e, os.flatMap(T.published));
+      if (!e.payload.republish) return write(tx, e, os.flatMap(T.published));
+      // Published changes: tell only the stores whose order changed since the last published plan.
+      type Snap = { ref: string; d: string; v: string | null; t: number | null }[];
+      const [prev] = await tx<{ snapshot: Snap }[]>`
+        SELECT snapshot FROM plan_versions WHERE workspace_id = ${e.workspace_id} AND version < ${Number(e.payload.version)} ORDER BY version DESC LIMIT 1`;
+      const before = new Map((prev?.snapshot ?? []).map((x) => [x.ref, x]));
+      return write(
+        tx,
+        e,
+        os.flatMap((o) => {
+          const b = before.get(o.order_ref);
+          if (!b) return T.published(o);
+          if (b.d === o.decision && (o.decision === "deferred" || b.v === o.vehicle_id)) return [];
+          // Newly deferred: the deferral notice. Newly served: window and handover code. Moved: the new window only.
+          return b.d === "served" && o.decision === "served" ? T.published(o).slice(0, 1) : T.published(o);
+        }),
+      );
     }
     case "load.decided":
       if (e.payload.decision === "send_short") return write(tx, e, [T.sentShort(await one())]);
@@ -106,6 +122,8 @@ async function handle(tx: Tx, e: Event) {
       // Recorded offline: the store hears when the record reaches the server.
       return write(tx, e, [{ ...msg, at: p?.synced_at ?? e.at }]);
     }
+    case "stop.reassigned":
+      return write(tx, e, [T.rerouted(await one(), String(e.payload.to))]);
     case "receipt.confirmed":
       return write(tx, e, T.receipt(await one(), !!e.payload.ok, e.payload as never, e.at));
   }

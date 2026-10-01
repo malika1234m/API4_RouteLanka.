@@ -280,6 +280,7 @@ const D: Record<string, [string, string]> = {
   "Orders for {d} close at 16:00, in {h} h {m} min.": ["{d} සඳහා ඇණවුම් 16:00ට වැසේ, පැය {h} විනාඩි {m}කින්.", "{d} ஆர்டர்கள் 16:00க்கு மூடப்படும், {h} மணி {m} நிமிடத்தில்."],
   "Today's cutoff has passed. This order joins the {d} run.": ["අද අවසන් වේලාව ඉක්මවා ඇත. මෙම ඇණවුම {d} ගමනට එක් වේ.", "இன்றைய இறுதி நேரம் கடந்துவிட்டது. இந்த ஆர்டர் {d} பயணத்தில் சேரும்."],
   "Saturday 25 April": ["අප්‍රේල් 25 සෙනසුරාදා", "ஏப்ரல் 25 சனிக்கிழமை"],
+  "🔁 Your delivery now comes on **{v}** so it reaches you inside your window. We'll confirm the time when it leaves.": ["🔁 ඔබේ භාරදීම දැන් **{v}** හි පැමිණේ, එවිට එය ඔබේ කාල සීමාව තුළ ළඟා වේ. එය පිටත් වූ විට වේලාව තහවුරු කරන්නෙමු.", "🔁 உங்கள் விநியோகம் இப்போது **{v}** இல் வரும், அதனால் உங்கள் நேரத்திற்குள் வந்து சேரும். புறப்பட்டதும் நேரத்தை உறுதிப்படுத்துவோம்."],
   "Monday 27 April": ["අප්‍රේල් 27 සඳුදා", "ஏப்ரல் 27 திங்கள்"],
   "Received by Waypoint at {t}": ["{t}ට Waypoint වෙත ලැබුණි", "{t} இல் Waypoint பெற்றுக்கொண்டது"],
   "For delivery on {d}. You'll see the arrival window in My deliveries after the plan is published. If anything can't be delivered, you'll be told why and when it will come instead.": ["{d} භාරදීම සඳහා. සැලසුම ප්‍රකාශ කළ පසු 'මගේ භාරදීම්' හි පැමිණෙන කාලය පෙනේ. යමක් භාරදිය නොහැකි නම්, හේතුව සහ ඒ වෙනුවට එන දිනය ඔබට දන්වනු ලැබේ.", "{d} விநியோகத்திற்கு. திட்டம் வெளியானதும் 'என் விநியோகங்கள்' இல் வருகை நேரம் தெரியும். ஏதாவது வழங்க முடியாவிட்டால், காரணமும் பதிலாக வரும் நாளும் தெரிவிக்கப்படும்."],

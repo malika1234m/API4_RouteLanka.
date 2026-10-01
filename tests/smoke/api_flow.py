@@ -76,6 +76,26 @@ run = sorted([o for o in v["orders"] if o.get("vehicle_id") == drv["vehicle_id"]
 assert run, "the driver's trip has stops"
 step(f"plan published; driver run {key} has {len(run)} stops")
 
+# Guards: a shortfall decision needs a flag; an unknown trip can't be marked ready.
+status, out = call("/commands", {"type": "shortfallDecision", "ref": run[0]["order_ref"], "decision": "send_short"}, "dispatcher")
+assert status == 409, f"decision without a flag must be refused: {status} {out}"
+status, _ = call("/commands", {"type": "ready", "key": "VEH999#1"}, "loader")
+assert status == 404, "ready on a trip that isn't planned must be refused"
+step("guards: no shortfall decision without a flag, no ready for an unknown trip")
+
+# Change after publishing: defer one order and publish the change. Only that store is told.
+changed = next(o for o in v["orders"] if o["decision"] == "served" and o not in run)
+before_msgs = {m["id"] for m in ok(f"/messages?outlet={changed['outlet_id']}", role="store")}
+cmd("dispatcher", type="defer", ref=changed["order_ref"], reason="dispatcher_choice")
+cmd("dispatcher", type="publish")
+for _ in range(30):
+    new = [m for m in ok(f"/messages?outlet={changed['outlet_id']}", role="store") if m["id"] not in before_msgs]
+    if new:
+        break
+    time.sleep(0.3)
+assert any("not coming" in m["template"] for m in new), f"store not told about the change: {new}"
+step(f"published change: {changed['outlet_id']} deferred after publishing, and its store was told")
+
 flagged = run[-1]
 cmd("loader", type="loadFlag", ref=flagged["order_ref"], issue={"kind": "missing", "qty": 2})
 status, _ = call("/commands", {"type": "ready", "key": key}, "loader")
@@ -86,6 +106,20 @@ for o in run:
 cmd("loader", type="ready", key=key)
 cmd("loader", type="depart", key=key)
 step("loader flagged a shortfall, dispatcher decided, trip loaded and departed")
+
+# Once a truck has left, its stops can't be re-planned from the board, and nothing can join it.
+status, out = call("/commands", {"type": "defer", "ref": run[0]["order_ref"], "reason": "dispatcher_choice"}, "dispatcher")
+assert status == 409, f"deferring a stop that left the depot must be refused: {status} {out}"
+spare = next(o for o in v["orders"] if o["depot"] == run[0]["depot"] and o not in run)
+status, _ = call("/commands", {"type": "move", "ref": spare["order_ref"], "vehicle_id": drv["vehicle_id"], "trip_id": drv["trip_id"]}, "dispatcher")
+assert status == 409, "nothing can be added to a trip that has left"
+# A stop handed over on the road must go to a vehicle that can carry it.
+chilled = next((o for o in run if o["temp_requirement"] == "chilled"), None)
+if chilled:
+    ambient = next(x["vehicle_id"] for x in v["vehicles"] if x["temp"] == "ambient" and x["depot"] == chilled["depot"] and x["status"] == "available")
+    status, out = call("/commands", {"type": "reassign", "ref": chilled["order_ref"], "to": ambient}, "dispatcher")
+    assert status == 409 and "refrigerated" in out.get("error", ""), f"chilled stop to an ambient truck must be refused: {status} {out}"
+step("guards: departed stops locked on the board; on-road handovers need a suitable vehicle")
 
 first = run[0]
 store = ok("/view", role="store")
@@ -119,6 +153,11 @@ assert st.get("pod", {}).get("verified"), "the server re-checked the handover co
 step(f"offline records synced (first {r1}, again {r2}); kept their recorded time; code verified")
 
 cmd("store", type="receive", ref=first["order_ref"], ok=True)
+
+# Store order: before the 16:00 cutoff it goes on the next operating day's run.
+placed = cmd("store", type="placeOrder", lines=[{"temp": "chilled", "units": 4, "volume_m3": 0.2, "weight_kg": 30}])
+assert placed["run_date"] and not placed["afterCutoff"], placed
+step(f"store order {placed['refs'][0]} confirmed for the {placed['run_date']} run (before the 16:00 cutoff)")
 feed = ok("/view", role="dispatcher")["feed"]
 assert len(feed) > 5
 step(f"store confirmed receipt; {len(feed)} events in the shared feed")

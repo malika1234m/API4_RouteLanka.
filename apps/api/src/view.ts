@@ -91,7 +91,9 @@ export async function buildView(day: Day, role?: Role): Promise<DayView> {
   const job = jobs[0];
 
   const view: DayView = {
-    day: { id: day.id, name: day.name, service_date: day.service_date, clock_start: new Date(day.clock_start).getTime(), clock_speed: day.clock_speed, meta: day.meta },
+    day: { id: day.id, name: day.name, service_date: day.service_date, // While the plan is unpublished the clock holds at 03:00 (the client shows that), so the view sends a fixed
+    // start: an unchanged day then gives an identical view, and a refetch costs a 304.
+    clock_start: day.published ? new Date(day.clock_start).getTime() : 0, clock_speed: day.clock_speed, meta: day.meta },
     published: day.published,
     planVersion: day.plan_version,
     planChangedAt: day.plan_changed_at ?? undefined,

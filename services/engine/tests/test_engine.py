@@ -75,6 +75,18 @@ def test_propose_gives_every_served_stop_a_sequence_and_prediction():
     assert all(0 <= a["pred_late_prob"] <= 1 and a["pred_window"] for a in served)
 
 
+def test_stop_order_beats_earliest_closing_first_when_a_window_opens_late():
+    # A closes first but only opens at 05:50; serving it first means waiting there, and B (closing 06:10) is then late.
+    # Serving B first, while waiting for A to open anyway, gets both inside their windows.
+    params = dict(svc_median={"Fresh|rear_dock": 15}, units_median={"Fresh|ambient": 10}, district_late_rate={"Gampaha": 0.1}, speed_dry={}, speed_monsoon={})
+    a = order("a", window_open_time="05:50", window_close_time="06:00")
+    b = order("b", window_open_time="03:00", window_close_time="06:10")
+    assignments, _ = propose([a, b], [veh("T1")], DTRAVEL, ALLOW, params, monsoon=False)
+    seq = {x["order_ref"]: x["stop_seq"] for x in assignments}
+    assert seq == {"b": 1, "a": 2}
+    assert all(x["pred_late_prob"] < 0.5 for x in assignments)
+
+
 DATA = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[3] / "data"))
 CHECKER = Path(os.environ.get("CHECKER", DATA.resolve().parent.parent / "check_allocation.py"))
 

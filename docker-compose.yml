@@ -39,6 +39,8 @@ services:
       <<: *env
       DATA_DIR: /data
       SEED_PASSWORD: ${SEED_PASSWORD:-routelanka}
+      # 1 rebuilds the data from the datasets (wipes demo days); 0 keeps an existing install.
+      SEED_FORCE: ${SEED_FORCE:-0}
     volumes: ["${DATA_DIR:-./data}:/data:ro"]
     depends_on:
       postgres: { condition: service_healthy }

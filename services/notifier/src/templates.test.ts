@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { delayNotice, delivered, published, type Msg, type OrderRow } from "./templates";
+import { delayNotice, delivered, published, rerouted, type Msg, type OrderRow } from "./templates";
 
 const order = (o: Partial<OrderRow> = {}): OrderRow => ({
   order_ref: "K1-035", outlet_id: "OUT104", brand: "Fresh", temp_requirement: "chilled", order_units: 40, decision: "served", reason: null,
@@ -45,5 +45,11 @@ describe("store messages", () => {
     expect(m.template).toContain("handover code");
     expect(m.vars).toMatchObject({ a: 38, b: 40 });
     expect(m.replies?.[0].command).toEqual({ type: "receive", ref: "K1-035", ok: true });
+  });
+
+  it("a stop handed to another vehicle names the new vehicle", () => {
+    const m = rerouted(order(), "VEH039");
+    expect(m.vars?.v).toBe("VEH039");
+    expect(filled(m)).toBe(true);
   });
 });

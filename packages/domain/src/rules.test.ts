@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkMove, planViolations, tripMinutes, type RuleRef } from "./rules";
+import { cannotCarry, checkMove, planViolations, tripMinutes, type RuleRef } from "./rules";
 import { clockStartFor, clockTime, fromMin, toMin } from "./time";
 import { codeHash, codeMatches } from "./handover";
 import { formatDelaySms, parseDelaySms } from "./sms";
@@ -101,6 +101,17 @@ describe("operating rules", () => {
   it("a vehicle in the workshop can't be used", () => {
     const o = order({ decision: "served", vehicle_id: "T1", trip_id: 1 });
     expect(planViolations(ref, [{ ...truck, status: "in_workshop" }], [o])).toEqual(["T1: T1 is in the workshop"]);
+  });
+});
+
+describe("handing a stop to another vehicle on the road", () => {
+  it("needs a vehicle that can carry the order at all", () => {
+    expect(cannotCarry(reefer, order({ temp_requirement: "chilled" }))).toBeNull();
+    expect(cannotCarry(truck, order({ temp_requirement: "chilled" }))).toMatch(/not refrigerated/);
+    expect(cannotCarry(truck, order({ parking_constraint: "van_only" }))).toMatch(/vans only/);
+    expect(cannotCarry({ ...van, depot: "Kandy" }, order())).toMatch(/Kandy depot/);
+    expect(cannotCarry({ ...reefer, status: "in_workshop" }, order())).toMatch(/workshop/);
+    expect(cannotCarry(undefined, order())).toBe("Unknown vehicle");
   });
 });
 

@@ -101,6 +101,19 @@ export function violations(ref: RuleRef, v: Vehicle, orders: Order[]): string[] 
   return out;
 }
 
+/**
+ * Why vehicle `v` can't take order `o` at all, whatever else it carries (null: it can). Used when a stop is
+ * handed to another vehicle on the road, where only the vehicle itself matters.
+ */
+export function cannotCarry(v: Vehicle | undefined, o: Pick<Order, "depot" | "temp_requirement" | "parking_constraint">): string | null {
+  if (!v) return "Unknown vehicle";
+  if (v.status !== "available") return `${v.vehicle_id} is in the workshop`;
+  if (v.depot !== o.depot) return `${v.vehicle_id} belongs to ${v.depot} depot`;
+  if (o.temp_requirement === "chilled" && v.temp !== "reefer") return `${v.vehicle_id} is not refrigerated`;
+  if (o.parking_constraint === "van_only" && v.type !== "van") return `${v.vehicle_id} is a truck; this outlet takes vans only`;
+  return null;
+}
+
 /** The violations that moving order `ref` to a vehicle and trip would create. */
 export function checkMove(ref: RuleRef, orders: Order[], orderRef: string, vehicle_id: string, trip_id: number): string[] {
   const v = ref.vehicle(vehicle_id);

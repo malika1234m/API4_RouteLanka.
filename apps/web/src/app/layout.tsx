@@ -6,9 +6,10 @@ import "./globals.css";
 
 const barlow = Barlow({ variable: "--font-barlow", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 const barlowCond = Barlow_Condensed({ variable: "--font-barlow-cond", subsets: ["latin"], weight: ["500", "600", "700"] });
-// Sinhala and Tamil for field staff; Barlow has Latin only.
-const sinhala = Noto_Sans_Sinhala({ variable: "--font-si", subsets: ["sinhala"], weight: ["400", "600", "700"], display: "swap" });
-const tamil = Noto_Sans_Tamil({ variable: "--font-ta", subsets: ["tamil"], weight: ["400", "600", "700"], display: "swap" });
+// Sinhala and Tamil for field staff; Barlow has Latin only. Not preloaded: the browser fetches them only when
+// a screen actually shows Sinhala or Tamil text, so English screens don't download them.
+const sinhala = Noto_Sans_Sinhala({ variable: "--font-si", subsets: ["sinhala"], weight: ["400", "600", "700"], display: "swap", preload: false });
+const tamil = Noto_Sans_Tamil({ variable: "--font-ta", subsets: ["tamil"], weight: ["400", "600", "700"], display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: "RouteLanka",

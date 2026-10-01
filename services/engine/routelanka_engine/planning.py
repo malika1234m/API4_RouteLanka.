@@ -4,6 +4,7 @@
 inside each trip, gives each trip its departure time, and predicts arrival and lateness per stop from
 parameters measured on the delivery history (see `measure_params` in seed.py).
 """
+import itertools
 import math
 
 from .engine import allocate, priority, trip_km, trip_minutes
@@ -32,44 +33,87 @@ def late_probability(slack_min: float, district_late_rate: float) -> float:
     return 1 / (1 + math.exp(slack_min / 14 - 0.8 + 2.5 * district_late_rate))
 
 
+EXHAUSTIVE_STOPS = 7  # up to 7! = 5040 orders per trip; larger trips use pairwise swaps
+
+
+def _run_stops(stops: list, depart: float, d: dict, brand: str, allowance: dict, params: dict, speed: dict, district: str, late_rate: float):
+    """Drive the stops in this order. Returns (expected late stops, per-order predictions).
+
+    Planned times use the dispatcher's free-flow minutes and allowances; predicted times slow each leg by the
+    district's traffic for that hour and use the predicted handling time. A vehicle that arrives early waits
+    for the window to open.
+    """
+    plan_t = pred_t = depart
+    expected_late, out = 0.0, {}
+    for n, stop in enumerate(stops, start=1):
+        leg = d["depot_to_district_freeflow_min"] if n == 1 else d["inter_stop_freeflow_min"]
+        plan_t += leg
+        pred_t += leg * 100 / max(speed.get(f"{district}|{int(pred_t // 60) % 24}", 100), 30)
+        plan_arr, pred_arr = plan_t, pred_t
+        for o in stop:  # several orders for one outlet are one stop
+            wo, wc = hm(o["window_open_time"]), hm(o["window_close_time"])
+            plan_t = max(plan_t, wo) + allowance[(brand, o["dock_type"])]
+            sv = predict_service(o, params)
+            pred_t = max(pred_t, wo) + sv
+            p_late = late_probability(wc - pred_arr, late_rate)
+            expected_late += p_late
+            out[o["order_ref"]] = dict(
+                stop_seq=n, plan_arrival=fmt(plan_arr), pred_arrival=fmt(pred_arr),
+                pred_window=f"{fmt(pred_arr - 10)}-{fmt(pred_arr + 20)}", pred_service_min=sv, pred_late_prob=round(p_late, 2))
+    return expected_late, out
+
+
+def best_stop_order(orders: list, run) -> list:
+    """The stop order with the fewest expected late arrivals.
+
+    Starts from earliest-closing window first (a good order on its own) and keeps it unless another order is
+    strictly better: every order for trips of up to EXHAUSTIVE_STOPS stops, pairwise swaps beyond that.
+    """
+    stops: dict = {}
+    for o in sorted(orders, key=lambda o: (hm(o["window_close_time"]), hm(o["window_open_time"]), o["outlet_id"], o["temp_requirement"])):
+        stops.setdefault(o["outlet_id"], []).append(o)
+    order = list(stops.values())
+    best = run(order)[0]
+    if len(order) <= EXHAUSTIVE_STOPS:
+        for perm in itertools.permutations(order):
+            cost = run(list(perm))[0]
+            if cost < best - 1e-9:
+                best, order = cost, list(perm)
+        return order
+    improved = True
+    while improved:
+        improved = False
+        for i in range(len(order) - 1):
+            for j in range(i + 1, len(order)):
+                cand = order[:i] + [order[j]] + order[i + 1:j] + [order[i]] + order[j + 1:]
+                cost = run(cand)[0]
+                if cost < best - 1e-9:
+                    best, order, improved = cost, cand, True
+    return order
+
+
 def sequence_trips(states: dict, dtravel: dict, allowance: dict, params: dict, monsoon: bool):
-    """Order each trip's stops by delivery window and predict arrivals.
+    """Order each trip's stops to keep stores' windows and predict arrivals.
 
     Returns (trips, per_order) where per_order maps order_ref to its stop number, planned and
-    predicted arrival, arrival window and lateness risk.
+    predicted arrival, arrival window, predicted handling time and lateness risk.
     """
     speed = params["speed_monsoon" if monsoon else "speed_dry"]
-    late_rate = params["district_late_rate"]
+    late_rates = params["district_late_rate"]
     trips_out, per_order = [], {}
     for vid, s in states.items():
         fresh_clock, day_clock = hm(FRESH_START), hm(DAY_START)
         for t in s.trips:
-            t["orders"].sort(key=lambda o: (hm(o["window_close_time"]), hm(o["window_open_time"]), o["outlet_id"], o["temp_requirement"]))
             fresh = t["brand"] == "Fresh"
             d = dtravel[t["district"]]
             depart = fresh_clock if fresh else day_clock
-            plan_t = pred_t = depart
-            stop_no, prev_outlet = 0, None
-            plan_arr = pred_arr = depart
-            for i, o in enumerate(t["orders"]):
-                same = o["outlet_id"] == prev_outlet  # a second order for the same outlet is the same stop
-                stop_no += 0 if same else 1
-                prev_outlet = o["outlet_id"]
-                leg = 0 if same else d["depot_to_district_freeflow_min"] if i == 0 else d["inter_stop_freeflow_min"]
-                plan_t += leg
-                slow = 100 / max(speed.get(f"{t['district']}|{int(pred_t // 60) % 24}", 100), 30)
-                pred_t += leg * slow
-                wo, wc = hm(o["window_open_time"]), hm(o["window_close_time"])
-                if not same:
-                    plan_arr, pred_arr = plan_t, pred_t
-                plan_t = max(plan_t, wo) + allowance[(t["brand"], o["dock_type"])]
-                sv = predict_service(o, params)
-                pred_t = max(pred_t, wo) + sv
-                p_late = late_probability(wc - pred_arr, late_rate.get(t["district"], 0.2))
-                per_order[o["order_ref"]] = dict(
-                    stop_seq=stop_no, plan_arrival=fmt(plan_arr), pred_arrival=fmt(pred_arr),
-                    pred_window=f"{fmt(pred_arr - 10)}-{fmt(pred_arr + 20)}", pred_service_min=sv,
-                    pred_late_prob=round(p_late, 2))
+
+            def run(stops, depart=depart, d=d, t=t):
+                return _run_stops(stops, depart, d, t["brand"], allowance, params, speed, t["district"], late_rates.get(t["district"], 0.2))
+
+            stops = best_stop_order(t["orders"], run)
+            t["orders"] = [o for stop in stops for o in stop]
+            per_order.update(run(stops)[1])
             mins = trip_minutes(t, dtravel, allowance)
             back = depart + mins + d["depot_to_district_freeflow_min"]
             if fresh:

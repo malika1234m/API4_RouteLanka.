@@ -101,6 +101,14 @@ export function delayNotice(o: OrderRow, choice: "late" | "move" | "defer", why:
   return { ...base, template: "🚧 Your {k} delivery can't reach you before you open ({r}). It goes back to the depot and comes on **tomorrow's first run**; you're first in line.", vars: { k: kind(o), r: t(why) } };
 }
 
+/** A stop handed to another vehicle (the dispatcher keeps it inside the store's window). */
+export const rerouted = (o: OrderRow, to: string): Msg => ({
+  order_ref: o.order_ref,
+  outlet_id: o.outlet_id,
+  template: "🔁 Your delivery now comes on **{v}** so it reaches you inside your window. We'll confirm the time when it leaves.",
+  vars: { v: to },
+});
+
 export const storeReplied = (o: OrderRow, reply: "wait" | "tomorrow", at: string): Msg[] => [
   { order_ref: o.order_ref, outlet_id: o.outlet_id, direction: "out", at, template: reply === "wait" ? "We'll wait" : "Can't receive, send tomorrow" },
   { order_ref: o.order_ref, outlet_id: o.outlet_id, at, template: reply === "wait" ? "Thanks. We'll let the driver know you're expecting the delivery." : "Understood. It comes back to the depot and goes first on tomorrow's run." },

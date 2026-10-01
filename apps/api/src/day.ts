@@ -50,6 +50,9 @@ export async function skipTo(tx: Tx, d: Day, hhmm?: string | null): Promise<Day>
 
 export async function createDay(db: Sql, name: string): Promise<string> {
   return db.begin(async (tx) => {
+    // Housekeeping: copies of the night older than three days are no longer anyone's walkthrough. A browser
+    // still pointing at one falls back to the default day.
+    await tx`DELETE FROM workspaces WHERE NOT is_default AND NOT is_template AND created_at < now() - interval '3 days'`;
     const [r] = await tx<{ id: string }[]>`SELECT clone_template_day(${name}) AS id`;
     await tx`INSERT INTO events (workspace_id, type, actor_role, text, at, in_feed) VALUES (${r.id}, 'day.created', 'dispatcher', ${`Demo day created: ${name}`}, '03:00', false)`;
     return r.id;

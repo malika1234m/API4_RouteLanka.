@@ -1,5 +1,5 @@
 # Web app (Next.js standalone). Build context: repository root.
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/domain/package.json packages/domain/
@@ -19,7 +19,7 @@ ARG API_URL=http://api:4000
 ENV API_URL=$API_URL
 RUN npm run build -w web
 
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build /repo/apps/web/.next/standalone ./
