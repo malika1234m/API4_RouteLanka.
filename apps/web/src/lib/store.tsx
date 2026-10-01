@@ -77,23 +77,35 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [authNeeded, setAuthNeeded] = useState<Role | null>(null);
   const loading = useRef(false);
+  const again = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (loading.current) return;
+    // A change that arrives while a fetch is running may not be in that fetch's answer, so it is not
+    // dropped: one more fetch runs as soon as the current one finishes.
+    if (loading.current) {
+      again.current = true;
+      return;
+    }
     loading.current = true;
     try {
-      const v = await api<DayView>("/view");
-      setDay(v);
-      setView(v);
-      writeLocal(VIEW_CACHE, JSON.stringify(v));
-    } catch (e) {
-      // No connection: the driver keeps working from the last view saved on the phone.
-      const cached = readLocal(VIEW_CACHE);
-      if (cached && !(e instanceof ApiError)) {
-        const v = JSON.parse(cached) as DayView;
-        setDay(v);
-        setView((cur) => cur ?? v);
-      }
+      do {
+        again.current = false;
+        try {
+          const v = await api<DayView>("/view");
+          setDay(v);
+          setView(v);
+          writeLocal(VIEW_CACHE, JSON.stringify(v));
+        } catch (e) {
+          // No connection: the driver keeps working from the last view saved on the phone.
+          const cached = readLocal(VIEW_CACHE);
+          if (cached && !(e instanceof ApiError)) {
+            const v = JSON.parse(cached) as DayView;
+            setDay(v);
+            setView((cur) => cur ?? v);
+          }
+          break;
+        }
+      } while (again.current);
     } finally {
       loading.current = false;
     }
@@ -122,9 +134,16 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const connect = () => {
       es = new EventSource("/api/stream");
-      es.addEventListener("change", () => {
+      const soon = () => {
         clearTimeout(timer);
         timer = setTimeout(() => void refresh(), 120);
+      };
+      es.addEventListener("change", soon);
+      // After a reconnect, catch up on anything sent while the stream was down.
+      let first = true;
+      es.addEventListener("hello", () => {
+        if (!first) soon();
+        first = false;
       });
       es.onerror = () => {
         es?.close();

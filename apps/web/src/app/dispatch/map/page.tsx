@@ -3,7 +3,7 @@
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Map as LMap, LayerGroup } from "leaflet";
+import type { LayerGroup, Map as LMap, Marker, Polyline } from "leaflet";
 import { DepotToggle } from "@/components/DepotToggle";
 import { Shell } from "@/components/Shell";
 import { Btn, BtnLink, Card, Chip, IconChill, IconNoSignal } from "@/components/ui";
@@ -43,14 +43,24 @@ interface Run {
 
 /** Let marker labels size to their text instead of Leaflet's 12 px default box. */
 const NO_SIZE = null as unknown as [number, number];
+const NO_RUNS: Run[] = [];
 
 const isDone = (s: DemoState, o: Order) => ["delivered", "received"].includes(s.states[o.order_ref].stage);
 
 /** Where each run is, from the last thing the system actually heard: never an invented live position. */
 function buildRuns(s: DemoState): Run[] {
+  // One pass to group served orders by trip, instead of scanning every order for every trip.
+  const byTrip = new Map<string, Order[]>();
+  for (const o of s.orders) {
+    if (o.decision !== "served") continue;
+    const k = tripKey(o);
+    const list = byTrip.get(k);
+    if (list) list.push(o);
+    else byTrip.set(k, [o]);
+  }
   return seed.trips.map((t) => {
     const k = tripKey(t);
-    const orders = s.orders.filter((o) => tripKey(o) === k && o.decision === "served").sort((a, b) => (a.stop_seq ?? 0) - (b.stop_seq ?? 0));
+    const orders = (byTrip.get(k) ?? []).sort((a, b) => (a.stop_seq ?? 0) - (b.stop_seq ?? 0));
     const mine = orders.filter((o) => !s.states[o.order_ref].reassignedTo);
     const left = s.departed[k];
     const delivered = mine.filter((o) => isDone(s, o));
@@ -95,88 +105,201 @@ function buildRuns(s: DemoState): Run[] {
   });
 }
 
+type Leaflet = typeof import("leaflet");
+type Drawn = { sig: string; line: Polyline; marker?: Marker };
+
+const vehicleHtml = (r: Run, sel: boolean) => {
+  const faded = r.status === "nosignal";
+  return `<div style="display:flex;align-items:center;gap:4px;background:${faded ? "#ffffff" : COLOR[r.status]};color:${faded ? "#16233a" : r.status === "risk" ? "#16233a" : "#fff"};border:2px ${faded ? "dashed #5d6b7e" : "solid #ffffff"};border-radius:999px;padding:2px 8px;font:700 12px Barlow,sans-serif;box-shadow:0 1px 4px #0004;white-space:nowrap;${sel ? "outline:3px solid #16233a;" : ""}${faded ? "opacity:.9;" : ""}">${faded ? "⚠︎ " : ""}${r.vehicle_id}<span style="font-weight:500;opacity:.8">· ${r.lastAt}</span></div>`;
+};
+const depotHtml = (d: string, waiting: number) =>
+  `<div style="background:#16233a;color:#fff;border:2px solid #f5b800;border-radius:6px;padding:2px 6px;font:600 12px Barlow,sans-serif;white-space:nowrap">${d} depot${waiting ? ` · ${waiting} at the dock` : ""}</div>`;
+
+/**
+ * The map is drawn once and then updated in place. Each run keeps its own line and marker, and is only
+ * touched when something about it changed (status, last report, route, selection), so a live event from
+ * any role costs a few Leaflet calls instead of a full redraw. The view is fitted when the depot changes or
+ * the plan is first published, never while the dispatcher is panning or zooming.
+ */
 function LeafletMap({ runs, selected, onSelect, depot }: { runs: Run[]; selected?: string; onSelect: (k: string) => void; depot: string }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<LMap | null>(null);
-  const layer = useRef<LayerGroup | null>(null);
-  const L = useRef<typeof import("leaflet") | null>(null);
-  const fit = useRef<[number, number][]>([]);
+  const L = useRef<Leaflet | null>(null);
+  const layers = useRef<{ base: LayerGroup; outlets: LayerGroup; runs: LayerGroup } | null>(null);
+  const drawn = useRef(new Map<string, Drawn>());
+  const depotMarker = useRef<Marker | null>(null);
+  const depotWaiting = useRef(-1);
+  const outletKey = useRef("");
+  const bounds = useRef<LatLng[]>([]);
+  const userMoved = useRef(false);
+  const programmatic = useRef(false);
+  const fittedFor = useRef("");
+  const select = useRef(onSelect);
   const [ready, setReady] = useState(false);
+  useEffect(() => {
+    select.current = onSelect;
+  }, [onSelect]);
 
+  const fit = () => {
+    const m = map.current;
+    if (!m || !bounds.current.length) return;
+    programmatic.current = true;
+    m.fitBounds(bounds.current, { padding: [30, 30], maxZoom: 10, animate: false });
+    programmatic.current = false;
+    userMoved.current = false;
+  };
+
+  // Create the map once.
   useEffect(() => {
     let cancelled = false;
+    let ro: ResizeObserver | undefined;
+    const runLayers = drawn.current;
     import("leaflet").then((mod) => {
       if (cancelled || !el.current || map.current) return;
       L.current = mod;
-      map.current = mod.map(el.current, { zoomControl: true, attributionControl: true }).setView([7.3, 80.4], 8);
+      // Canvas draws hundreds of lines and circles far faster than one SVG element each.
+      const m = mod.map(el.current, { zoomControl: true, attributionControl: true, preferCanvas: true }).setView([7.3, 80.4], 8);
       mod.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 13,
+        keepBuffer: 4,
+        updateWhenZooming: false,
         className: "rl-tiles",
-      }).addTo(map.current);
-      layer.current = mod.layerGroup().addTo(map.current);
-      // Leaflet measures its box once; keep it in step with the layout.
-      const ro = new ResizeObserver(() => {
-        map.current?.invalidateSize();
-        if (fit.current.length) map.current?.fitBounds(fit.current, { padding: [30, 30], maxZoom: 10, animate: false });
+      }).addTo(m);
+      layers.current = { base: mod.layerGroup().addTo(m), outlets: mod.layerGroup().addTo(m), runs: mod.layerGroup().addTo(m) };
+      m.on("movestart", () => {
+        if (!programmatic.current) userMoved.current = true;
+      });
+      map.current = m;
+      // Leaflet measures its box once; keep it in step with the layout, without undoing the user's view.
+      ro = new ResizeObserver(() => {
+        m.invalidateSize();
+        if (!userMoved.current) fit();
       });
       ro.observe(el.current);
       setReady(true);
     });
     return () => {
       cancelled = true;
+      ro?.disconnect();
       map.current?.remove();
       map.current = null;
+      runLayers.clear();
     };
   }, []);
 
+  // Depot change: road disruptions and the depot marker, and start the runs afresh.
+  useEffect(() => {
+    const Lm = L.current;
+    const ls = layers.current;
+    if (!ready || !Lm || !ls) return;
+    ls.base.clearLayers();
+    ls.runs.clearLayers();
+    ls.outlets.clearLayers();
+    drawn.current.clear();
+    outletKey.current = "";
+    fittedFor.current = "";
+    for (const [d, idx] of Object.entries(ROAD_TODAY)) {
+      const c = DISTRICT_CENTER[d];
+      if (idx < 75 && c) Lm.circle(c, { radius: 9000, color: "#8a6400", weight: 1.5, dashArray: "4 4", fillColor: "#f5b800", fillOpacity: 0.12, interactive: true }).bindTooltip(`${d}: road index ${idx} today (100 is normal)`).addTo(ls.base);
+    }
+    depotWaiting.current = 0;
+    depotMarker.current = Lm.marker(DEPOT_POS[depot], { icon: Lm.divIcon({ className: "", html: depotHtml(depot, 0), iconSize: NO_SIZE, iconAnchor: [50, 34] }), zIndexOffset: 400 }).addTo(ls.base);
+  }, [ready, depot]);
+
+  // Runs: update only what changed.
   useEffect(() => {
     const m = map.current;
     const Lm = L.current;
-    if (!ready || !m || !Lm || !layer.current) return;
-    layer.current.clearLayers();
+    const ls = layers.current;
+    if (!ready || !m || !Lm || !ls) return;
     const shown = runs.filter((r) => r.depot === depot);
-    const bounds: LatLng[] = [DEPOT_POS[depot]];
-    // Planned routes: depot to district, then outlets. Straight lines: route geometry is out of scope.
-    for (const r of shown) {
-      const sel = r.k === selected;
-      const pts = r.route;
-      bounds.push(...pts);
-      Lm.polyline(pts, { color: sel ? "#16233a" : COLOR[r.status], weight: sel ? 4 : 2, opacity: sel ? 0.9 : 0.35, dashArray: r.status === "depot" ? "4 6" : undefined }).addTo(layer.current).on("click", () => onSelect(r.k));
+
+    // Outlets: one marker per outlet (not per order), redrawn only when the set or the selection changes.
+    const outlets = new Map<string, { o: Order; chilled: boolean; sel: boolean }>();
+    for (const r of shown)
       for (const o of r.orders) {
-        Lm.circleMarker(outletPos(o.outlet_id, o.district), { radius: sel ? 6 : 4, color: "#ffffff", weight: 1.5, fillColor: o.temp_requirement === "chilled" ? "#16639a" : "#5d6b7e", fillOpacity: 0.95 })
-          .bindTooltip(`${o.outlet_id} · ${o.district} · window ${o.window_open_time}–${o.window_close_time}`)
-          .addTo(layer.current);
+        const prev = outlets.get(o.outlet_id);
+        outlets.set(o.outlet_id, { o, chilled: (prev?.chilled ?? false) || o.temp_requirement === "chilled", sel: (prev?.sel ?? false) || r.k === selected });
       }
+    const ok = [...outlets].map(([id, x]) => `${id}${x.chilled ? "c" : ""}${x.sel ? "s" : ""}`).join(",");
+    if (ok !== outletKey.current) {
+      outletKey.current = ok;
+      ls.outlets.clearLayers();
+      for (const [id, { o, chilled, sel }] of outlets)
+        Lm.circleMarker(outletPos(id, o.district), { radius: sel ? 6 : 4, color: "#ffffff", weight: 1.5, fillColor: chilled ? "#16639a" : "#5d6b7e", fillOpacity: 0.95 })
+          .bindTooltip(`${id} · ${o.district} · window ${o.window_open_time}–${o.window_close_time}`)
+          .addTo(ls.outlets);
     }
-    for (const [d, idx] of Object.entries(ROAD_TODAY)) {
-      if (idx >= 75) continue;
-      const c = DISTRICT_CENTER[d];
-      if (c) Lm.circle(c, { radius: 9000, color: "#8a6400", weight: 1.5, dashArray: "4 4", fillColor: "#f5b800", fillOpacity: 0.12 }).bindTooltip(`${d}: road index ${idx} today (100 is normal)`).addTo(layer.current);
-    }
-    for (const [d, p] of Object.entries(DEPOT_POS)) {
-      if (d !== depot) continue;
-      const waiting = shown.filter((r) => !r.left).length;
-      Lm.marker(p, { icon: Lm.divIcon({ className: "", html: `<div style="background:#16233a;color:#fff;border:2px solid #f5b800;border-radius:6px;padding:2px 6px;font:600 12px Barlow,sans-serif;white-space:nowrap">${d} depot${waiting ? ` · ${waiting} at the dock` : ""}</div>`, iconSize: NO_SIZE, iconAnchor: [50, 34] }), zIndexOffset: 400 }).addTo(layer.current);
-    }
+
+    const keep = new Set<string>();
     for (const r of shown) {
-      if (!r.left) continue; // still at the depot: the depot marker stands for it
+      keep.add(r.k);
       const sel = r.k === selected;
-      const faded = r.status === "nosignal";
-      const html = `<div style="display:flex;align-items:center;gap:4px;background:${faded ? "#ffffff" : COLOR[r.status]};color:${faded ? "#16233a" : r.status === "risk" ? "#16233a" : "#fff"};border:2px ${faded ? "dashed #5d6b7e" : "solid #ffffff"};border-radius:999px;padding:2px 8px;font:700 12px Barlow,sans-serif;box-shadow:0 1px 4px #0004;white-space:nowrap;${sel ? "outline:3px solid #16233a;" : ""}${faded ? "opacity:.9;" : ""}">${faded ? "⚠︎ " : ""}${r.vehicle_id}<span style="font-weight:500;opacity:.8">· ${r.lastAt}</span></div>`;
-      Lm.marker(r.pos, { icon: Lm.divIcon({ className: "", html, iconSize: NO_SIZE, iconAnchor: [30, -6] }), zIndexOffset: sel ? 1000 : 500 })
-        .bindTooltip(r.lastSeen, { direction: "top" })
-        .on("click", () => onSelect(r.k))
-        .addTo(layer.current);
+      const sig = [r.status, sel, r.left ?? "", r.lastAt, r.lastSeen, r.pos.join(), r.route.length].join("|");
+      const d = drawn.current.get(r.k);
+      if (d && d.sig === sig) continue;
+      const style = { color: sel ? "#16233a" : COLOR[r.status], weight: sel ? 4 : 2, opacity: sel ? 0.9 : 0.35, dashArray: r.status === "depot" ? "4 6" : undefined };
+      const line = d?.line ?? Lm.polyline(r.route, style).on("click", () => select.current(r.k)).addTo(ls.runs);
+      if (d) line.setLatLngs(r.route).setStyle(style);
+      if (sel) line.bringToFront();
+      let marker = d?.marker;
+      if (r.left) {
+        const icon = Lm.divIcon({ className: "", html: vehicleHtml(r, sel), iconSize: NO_SIZE, iconAnchor: [30, -6] });
+        if (marker) marker.setLatLng(r.pos).setIcon(icon).setZIndexOffset(sel ? 1000 : 500).setTooltipContent(r.lastSeen);
+        else marker = Lm.marker(r.pos, { icon, zIndexOffset: sel ? 1000 : 500 }).bindTooltip(r.lastSeen, { direction: "top" }).on("click", () => select.current(r.k)).addTo(ls.runs);
+      } else if (marker) {
+        // Still at the depot: the depot marker stands for it.
+        marker.remove();
+        marker = undefined;
+      }
+      drawn.current.set(r.k, { sig, line, marker });
     }
-    fit.current = bounds as [number, number][];
-    m.invalidateSize();
-    m.fitBounds(fit.current, { padding: [30, 30], maxZoom: 10, animate: false });
-    // Only refit when the depot changes, not on every update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    for (const [k, d] of drawn.current)
+      if (!keep.has(k)) {
+        d.line.remove();
+        d.marker?.remove();
+        drawn.current.delete(k);
+      }
+
+    const waiting = shown.filter((r) => !r.left).length;
+    if (waiting !== depotWaiting.current) {
+      depotWaiting.current = waiting;
+      depotMarker.current?.setIcon(Lm.divIcon({ className: "", html: depotHtml(depot, waiting), iconSize: NO_SIZE, iconAnchor: [50, 34] }));
+    }
+
+    bounds.current = [DEPOT_POS[depot], ...shown.flatMap((r) => r.route)];
+    // Fit once per depot (and again when the plan first appears), not on every live update.
+    const fitKey = `${depot}|${shown.length > 0}`;
+    if (fittedFor.current !== fitKey) {
+      fittedFor.current = fitKey;
+      m.invalidateSize();
+      fit();
+    }
   }, [ready, runs, selected, depot]);
 
-  return <div ref={el} className="h-[560px] w-full" aria-label="Map of runs, outlets and depots" role="region" />;
+  // Bring a run selected from the list into view, keeping the dispatcher's zoom.
+  useEffect(() => {
+    const m = map.current;
+    const r = runs.find((x) => x.k === selected && x.depot === depot);
+    if (!ready || !m || !r) return;
+    if (!m.getBounds().contains(r.pos)) {
+      programmatic.current = true;
+      m.panTo(r.pos, { animate: true });
+      programmatic.current = false;
+    }
+    // Only when the selection changes, not on every update of that run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, selected, depot]);
+
+  return (
+    <div className="relative">
+      <div ref={el} className="h-[560px] w-full" aria-label="Map of runs, outlets and depots" role="region" />
+      <button onClick={fit} className="absolute bottom-6 right-3 z-[500] rounded-md border border-line bg-card px-2.5 py-1.5 text-xs font-semibold shadow hover:border-night">
+        Show all runs
+      </button>
+    </div>
+  );
 }
 
 export default function MapPage() {
@@ -207,7 +330,7 @@ export default function MapPage() {
           {!s.published && (
             <div className="absolute left-14 right-3 top-3 z-[500] rounded-md bg-amber-soft px-4 py-2 text-sm font-semibold text-hivis-deep shadow">Planned routes appear here after the plan is published.</div>
           )}
-          <LeafletMap runs={s.published ? runs : []} selected={selected} onSelect={setSelected} depot={depot} />
+          <LeafletMap runs={s.published ? runs : NO_RUNS} selected={selected} onSelect={setSelected} depot={depot} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-3 py-2 text-xs text-mute">
             {(["ok", "risk", "late", "issue", "nosignal"] as Status[]).map((st) => (
               <span key={st} className="inline-flex items-center gap-1">
