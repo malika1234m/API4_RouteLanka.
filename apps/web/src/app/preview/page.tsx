@@ -31,7 +31,7 @@ function Preview() {
         </nav>
       </div>
       <div className="rounded-[44px] bg-black p-3 shadow-2xl ring-1 ring-white/15">
-        <iframe key={path} src={path} title="Phone preview" className="h-[min(844px,calc(100dvh-8rem))] w-[390px] rounded-[32px] bg-paper" />
+        <iframe key={path} src={path} title="Phone preview" className="h-[min(844px,calc(100dvh-8rem))] w-[min(390px,calc(100vw-4rem))] rounded-[32px] bg-paper" />
       </div>
     </div>
   );

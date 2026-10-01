@@ -154,6 +154,8 @@ npm test                                         # domain rules, API validation,
 cd services/engine && pytest                     # engine; includes the organisers' check_allocation.py on scenario S1
 python tests/smoke/api_flow.py                   # API flow against a running stack
 python tests/e2e/walkthrough.py                  # browser walkthrough (BASE=http://localhost:3000)
+python tests/e2e/interactions.py                 # edits, undo, re-plan, real offline, wrong code, receipt problem, languages
+python tests/e2e/crawl.py                        # every screen at desktop and phone size: errors, failed calls, overflow
 ```
 
 ## 6. Departures from the Designathon design

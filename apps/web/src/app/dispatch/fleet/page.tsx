@@ -89,11 +89,11 @@ export default function Fleet() {
             <table className="w-full text-sm">
               <thead className="bg-paper text-left text-xs text-mute">
                 <tr>
-                  <th className="px-4 py-2 font-medium">#</th>
+                  <th className="px-2 py-2 font-medium sm:px-4">#</th>
                   <th className="px-2 py-2 font-medium">Vehicle</th>
-                  <th className="px-2 py-2 font-medium">Capacity</th>
+                  <th className="hidden px-2 py-2 font-medium sm:table-cell">Capacity</th>
                   <th className="px-2 py-2 font-medium">If back tonight</th>
-                  <th className="px-4 py-2" />
+                  <th className="px-2 py-2 sm:px-4" />
                 </tr>
               </thead>
               <tbody>
@@ -101,14 +101,14 @@ export default function Fleet() {
                   const asked = s.fleet.repairs.includes(v.vehicle_id);
                   return (
                     <tr key={v.vehicle_id} className="border-t border-line">
-                      <td className="px-4 py-2.5 font-cond text-lg font-bold">{i + 1}</td>
+                      <td className="px-2 py-2.5 font-cond text-lg font-bold sm:px-4">{i + 1}</td>
                       <td className="px-2 py-2.5">
                         <span className="inline-flex items-center gap-1 font-cond text-base font-bold">
                           {v.vehicle_id} {v.temp === "reefer" && <span className="text-chill"><IconChill className="size-4" /></span>}
                         </span>
-                        <span className="block text-xs text-mute">{v.temp === "reefer" ? "Refrigerated" : "Ambient"} {v.type}</span>
+                        <span className="block text-xs text-mute">{v.temp === "reefer" ? "Refrigerated" : "Ambient"} {v.type}<span className="sm:hidden"> · {v.volume_cap_m3} m³</span></span>
                       </td>
-                      <td className="px-2 py-2.5 font-cond">{v.volume_cap_m3} m³</td>
+                      <td className="hidden px-2 py-2.5 font-cond sm:table-cell">{v.volume_cap_m3} m³</td>
                       <td className="px-2 py-2.5">
                         {trip ? (
                           <>
@@ -123,7 +123,7 @@ export default function Fleet() {
                           <span className="text-mute">{v.temp === "reefer" ? "Nothing left it could carry" : "No ambient deferrals tonight"}</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-2 py-2.5 text-right sm:px-4">
                         {asked ? (
                           <Chip tone="ok"><IconCheck className="size-3.5" /> Workshop asked</Chip>
                         ) : trip ? (

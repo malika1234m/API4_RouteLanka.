@@ -397,7 +397,12 @@ function MovePanel({ o, onClose, act }: { o: Order; onClose: () => void; act: Ac
             </button>
           </li>
         ))}
-        {ok.length === 0 && <li className="rounded-md bg-late-soft px-2 py-1.5 text-sm text-late">No vehicle can take this order without breaking a rule, so this deferral is unavoidable.</li>}
+        {ok.length === 0 &&
+          (o.decision === "deferred" ? (
+            <li className="rounded-md bg-late-soft px-2 py-1.5 text-sm text-late">No vehicle can take this order without breaking a rule, so this deferral is unavoidable.</li>
+          ) : (
+            <li className="rounded-md bg-paper px-2 py-1.5 text-sm text-mute">No other trip can take this order without breaking a rule. It stays where it is, or you can defer it below.</li>
+          ))}
       </ul>
       {blocked.length > 0 && (
         <details className="mt-2 text-sm">
