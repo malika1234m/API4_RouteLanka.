@@ -171,6 +171,8 @@ def main():
 
         log("reference tables")
         copy_rows(cur, "outlets", list(outlets.columns), outlets.fillna("").itertuples(index=False))
+        # Demo WhatsApp numbers, one per outlet (+94 77 000 0NNN). A deployment sets real ones (see docs/whatsapp.md).
+        copy_rows(cur, "outlet_contacts", ["outlet_id", "phone"], ((o, f"94770000{o[3:]}") for o in outlets.outlet_id))
         copy_rows(cur, "vehicles", list(vehicles.columns), vehicles.itertuples(index=False))
         copy_rows(cur, "districts", list(dist.columns), dist.itertuples(index=False))
         copy_rows(cur, "service_allowance", ["brand", "dock_type", "minutes"], allow_df.itertuples(index=False))

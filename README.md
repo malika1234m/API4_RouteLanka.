@@ -32,6 +32,7 @@ Then open **http://localhost:3000** and sign in with one of the accounts below.
 |---|---|
 | Web app | http://localhost:3000 |
 | API (health check) | http://localhost:4000/api/health |
+| WhatsApp Cloud API simulator (stores' phones) | http://localhost:3000/wa-sim |
 | RabbitMQ management (user `routelanka`, password `routelanka`) | http://localhost:15672 |
 
 On a fresh install the `seed` job applies the migrations, loads the datasets and builds the demo night. It then exits and the
@@ -71,9 +72,11 @@ phone frame next to the desktop.
    district per trip, two trips, 270 Fresh minutes) are shown before you drop, and *Publish* stays locked while any rule is broken.
    *Re-plan* sends a planning job to the Python engine over RabbitMQ, and the result appears without a reload.
 3. **Publish plan.** Every store gets its message, and every stop gets a random 4-digit handover code.
-4. **Store, WhatsApp** (`/preview?path=/store/messages`). A deferred store gets the reason and the new date. A served store
-   gets its arrival window and handover code. Tap the language button for Sinhala and Tamil. Tap *Noted, thanks*; the
-   dispatcher's feed shows the acknowledgement.
+4. **Store, WhatsApp.** Open **`/wa-sim?phone=94770000029`**: OUT029's phone, receiving real WhatsApp Cloud API
+   messages (see [docs/whatsapp.md](docs/whatsapp.md)). The same thread is in the app at `/preview?path=/store/messages`. A deferred store gets the reason and the new date. A served store
+   gets its arrival window and handover code. Tap *Noted, thanks* on the phone; the
+   dispatcher's feed shows the acknowledgement. **Dispatcher → WhatsApp** (`/dispatch/whatsapp`) shows every
+   request to the Cloud API and every signed webhook back, with delivery ticks.
 5. **Loader, Kandy dock** (`senash.kandydock` → *Dock* → **VEH041 trip 1**). Tick orders as they go on the truck. On
    **OUT107**, *Flag a problem* → 3 crates missing → *Send to dispatcher*.
 6. **Dispatcher, monitor** (`/dispatch/monitor`). The flag arrives live. Choose *Send short*: the store is told before the truck leaves.
@@ -139,6 +142,11 @@ Event-driven services around one shared record. Details: [docs/architecture.md](
   close at 16:00 for the next operating day.
 * **Light on the phone.** JSON is gzipped (the day view is about 9 KB instead of 100 KB) and carries an ETag,
   so an unchanged refetch is a `304` with no body. Sinhala and Tamil fonts load only when used.
+* **WhatsApp Business Platform.** Store messages go out through the Cloud API: approved templates outside the
+  24-hour window, reply buttons inside it, in the store's language. Delivery ticks and taps come back by signed
+  webhook (HMAC-SHA256, de-duplicated, scoped to the store's own orders) into the same command handlers. A bundled
+  Cloud API simulator plays Meta so judges can see and test the whole loop; `WHATSAPP_MODE=cloud` points it at
+  Meta. Details and a five-minute check: [docs/whatsapp.md](docs/whatsapp.md).
 * **Graceful degradation.** If the notifier or engine is down, planning and delivery keep working, and messages and jobs
   catch up from the queue. If the data signal is gone, the driver keeps working and reports delays by SMS.
 
@@ -147,7 +155,8 @@ apps/web            Next.js 16 web app (all four roles, responsive; service work
 apps/api            Fastify API: auth, commands, views, sync, SMS inbound, SSE, outbox relay
 packages/domain     shared types, operating rules, demo clock, handover codes, SMS format (+ tests)
 services/engine     Python: migrations, seed, allocation engine, planning worker (+ tests)
-services/notifier   TypeScript worker: events → store/driver messages (+ tests)
+services/notifier   TypeScript worker: events → store messages, and the WhatsApp sender (+ tests)
+services/wa-sim     WhatsApp Cloud API simulator: Meta's send endpoint, signed webhooks, phones at /wa-sim
 db/migrations       SQL schema
 tests/e2e           browser walkthrough (Playwright)
 tests/smoke         API flow test
@@ -178,6 +187,7 @@ python tests/e2e/walkthrough.py                  # browser walkthrough (BASE=htt
 python tests/e2e/interactions.py                 # edits, undo, re-plan, real offline, wrong code, receipt problem, languages
 python tests/e2e/crawl.py                        # every screen at desktop and phone size: errors, failed calls, overflow
 python tests/e2e/map.py                          # check-in map: keeps the user's view through live updates, moves markers in place
+python tests/e2e/whatsapp.py                     # WhatsApp over the wire: templates, ticks, taps, 24-h window, language, security
 ```
 
 ## 6. Departures from the Designathon design
@@ -198,6 +208,9 @@ The following exist **only to make judging easy**, and each is a deliberate choi
 
 * **Store scope.** The store account can open any outlet's messages (`?outlet=`), so the walkthrough can show OUT104
   and OUT029 from one account. In production a store user sees only their own outlet.
+* **WhatsApp simulator.** Stores' phones are simulated at `/wa-sim` (the Cloud API simulator), because judges
+  can't be given a Meta account and a phone per store. RouteLanka's side is the production code: switch with
+  `WHATSAPP_MODE=cloud` (see [docs/whatsapp.md](docs/whatsapp.md#going-live-on-meta)).
 * **SMS simulator.** `/api/sms/simulate` lets the driver's phone "send" an SMS through the API. A real gateway posts
   to `/api/sms/inbound` with `SMS_GATEWAY_TOKEN`. Turn the simulator off with `SMS_SIMULATOR=false`.
 * **Role switcher and New demo day.** One browser holds all four sessions, and anyone can start a fresh copy of the night.

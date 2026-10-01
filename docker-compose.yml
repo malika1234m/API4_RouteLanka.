@@ -2,6 +2,16 @@
 # Put the competition datasets in ./data first (see README): they are never committed.
 name: routelanka
 
+x-whatsapp: &whatsapp
+  # off | simulator (the bundled Cloud API simulator, default) | cloud (Meta). See docs/whatsapp.md.
+  WHATSAPP_MODE: ${WHATSAPP_MODE:-simulator}
+  WHATSAPP_API_BASE: ${WHATSAPP_API_BASE:-http://wa-sim:3200}
+  WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-100000000000001}
+  WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-dev-wa-token}
+  WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-dev-wa-app-secret}
+  WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-dev-wa-verify-token}
+  WHATSAPP_LIVE_NUMBERS: ${WHATSAPP_LIVE_NUMBERS:-}
+
 x-env: &env
   DATABASE_URL: postgres://${POSTGRES_USER:-routelanka}:${POSTGRES_PASSWORD:-routelanka}@postgres:5432/${POSTGRES_DB:-routelanka}
   RABBITMQ_URL: amqp://${RABBITMQ_USER:-routelanka}:${RABBITMQ_PASSWORD:-routelanka}@rabbitmq:5672/
@@ -58,7 +68,8 @@ services:
 
   notifier:
     build: { context: ., dockerfile: services/notifier/Dockerfile }
-    environment: *env
+    environment:
+      <<: [*env, *whatsapp]
     restart: unless-stopped
     depends_on:
       seed: { condition: service_completed_successfully }
@@ -67,8 +78,9 @@ services:
   api:
     build: { context: ., dockerfile: apps/api/Dockerfile }
     environment:
-      <<: *env
+      <<: [*env, *whatsapp]
       PORT: "4000"
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-secret-change-me-in-production-please}
       SMS_GATEWAY_TOKEN: ${SMS_GATEWAY_TOKEN:-dev-sms-token}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
@@ -80,11 +92,22 @@ services:
       seed: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
 
+  # WhatsApp Cloud API simulator: stores' phones in the browser at /wa-sim (see docs/whatsapp.md).
+  wa-sim:
+    build: { context: ., dockerfile: services/wa-sim/Dockerfile }
+    environment:
+      WA_SIM_TOKEN: ${WHATSAPP_TOKEN:-dev-wa-token}
+      WA_SIM_APP_SECRET: ${WHATSAPP_APP_SECRET:-dev-wa-app-secret}
+      WA_SIM_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-100000000000001}
+      WA_SIM_WEBHOOK_URL: http://api:4000/api/whatsapp/webhook
+    ports: ["${WA_SIM_PORT:-3200}:3200"]
+    restart: unless-stopped
+
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args: { API_URL: "http://api:4000" }
+      args: { API_URL: "http://api:4000", WA_SIM_URL: "http://wa-sim:3200" }
     ports: ["${WEB_PORT:-3000}:3000"]
     restart: unless-stopped
     depends_on:

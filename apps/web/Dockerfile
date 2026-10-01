@@ -17,6 +17,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # The /api rewrite target is fixed at build time.
 ARG API_URL=http://api:4000
 ENV API_URL=$API_URL
+ARG WA_SIM_URL=http://wa-sim:3200
+ENV WA_SIM_URL=$WA_SIM_URL
 RUN npm run build -w web
 
 FROM node:22-alpine

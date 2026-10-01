@@ -1,0 +1,22 @@
+{
+  "name": "@routelanka/wa-sim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp Cloud API simulator: the same wire protocol as Meta, with phones in the browser",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@routelanka/domain": "*",
+    "@types/node": "^20",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5",
+    "vitest": "^2.1.8"
+  }
+}

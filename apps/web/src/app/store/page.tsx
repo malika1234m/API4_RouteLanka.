@@ -1,6 +1,7 @@
 "use client";
 
 import { OutletPicker, useOutlet } from "@/components/OutletPicker";
+import { demoWhatsAppNumber, formatPhone } from "@routelanka/domain";
 import { Shell } from "@/components/Shell";
 import { Btn, BtnLink, Card, IconChat, IconCheck, IconLock, IconNoSignal, RelayTrack, Rich, stageChip } from "@/components/ui";
 import { deferralConsequence, outletById, REASON_LABEL, seed, tripKey, vehicleById } from "@/lib/seed";
@@ -143,11 +144,14 @@ function Glance({ outletId }: { outletId: string }) {
           <span className="grid size-7 place-items-center rounded-full bg-[#25d366] text-white"><IconChat className="size-4" /></span>
           {t("Updates by WhatsApp")}
         </p>
-        <p className="mt-1 text-sm text-mute">+94 77 ··· 4412</p>
+        <p className="mt-1 text-sm text-mute">{formatPhone(demoWhatsAppNumber(outletId))}</p>
         <p className="mt-1 text-xs text-mute">{t("Messages are sent in the store's chosen language. No app to install: outlet staff change often.")}</p>
         <BtnLink href="/store/messages" className="mt-3 w-full">
           {t("Open messages")}
         </BtnLink>
+        <a href={`/wa-sim?phone=${demoWhatsAppNumber(outletId)}`} target="_blank" rel="noreferrer" className="mt-2 block text-center text-xs font-semibold text-[#027eb5] underline">
+          See it on this store&apos;s phone (WhatsApp simulator)
+        </a>
       </Card>
       <Card>
         <p className="border-b border-line px-4 py-2.5 text-sm font-semibold">{t("Notices for this outlet")}</p>

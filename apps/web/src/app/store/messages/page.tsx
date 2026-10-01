@@ -7,7 +7,7 @@ import { OutletPicker, useOutlet } from "@/components/OutletPicker";
 import { Shell } from "@/components/Shell";
 import { Rich } from "@/components/ui";
 import { api } from "@/lib/api";
-import { useT, type T } from "@/lib/i18n";
+import { renderMessage, useT } from "@/lib/i18n";
 import { outletById } from "@/lib/seed";
 import { useDemo, type Action } from "@/lib/store";
 
@@ -21,19 +21,22 @@ interface Msg {
   day: "Yesterday" | "Today";
   at: string;
   order_ref: string | null;
+  wa_status?: "local" | "pending" | "sent" | "delivered" | "read" | "failed" | "skipped";
+  wa_error?: string | null;
 }
 
-/** Translate a template, keeping a leading emoji outside the translation key. */
-function render(t: T, template: string, vars: Msg["vars"] = {}) {
-  const m = template.match(/^(\p{Extended_Pictographic}\uFE0F?\s)([\s\S]*)$/u);
-  const [icon, key] = m ? [m[1], m[2]] : ["", template];
-  const v = Object.fromEntries(Object.entries(vars).map(([k, x]) => [k, x && typeof x === "object" ? t(x.$t) : (x ?? "")]));
-  return icon + t(key, v);
+/** WhatsApp delivery ticks for a message to the store: sent ✓, delivered ✓✓, read (blue) ✓✓. */
+function Ticks({ m }: { m: Msg }) {
+  const st = m.wa_status;
+  if (!st || st === "local" || st === "skipped") return null;
+  if (st === "failed") return <span className="ml-1 text-late" title={m.wa_error ?? "Not delivered"}>⚠</span>;
+  if (st === "pending") return <span className="ml-1" title="Waiting to send">🕓</span>;
+  return <span className={`ml-1 ${st === "read" ? "text-[#53bdeb]" : ""}`} title={`WhatsApp: ${st}`}>{st === "sent" ? "✓" : "✓✓"}</span>;
 }
 
 export default function Messages() {
   const { s, dispatch } = useDemo();
-  const { t } = useT("store");
+  const { t, lang } = useT("store");
   const [outletId, setOutlet] = useOutlet();
   const [msgs, setMsgs] = useState<Msg[]>([]);
 
@@ -93,10 +96,10 @@ export default function Messages() {
                 )}
                 <div className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] rounded-lg px-3 py-2 text-[15px] leading-snug shadow-sm ${m.direction === "out" ? "bg-[#d9fdd3]" : "bg-white"}`}>
-                    <Rich text={render(t, m.template, m.vars)} />
+                    <Rich text={renderMessage(lang, m.template, m.vars)} />
                     <span className="ml-2 inline-block translate-y-0.5 text-[11px] text-mute">
                       {m.at}
-                      {m.direction === "out" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
+                      {m.direction === "out" ? <span className="ml-1 text-[#53bdeb]">✓✓</span> : <Ticks m={m} />}
                     </span>
                   </div>
                 </div>
@@ -105,11 +108,11 @@ export default function Messages() {
                     {m.replies.map((r) =>
                       r.link ? (
                         <Link key={r.label} href={r.link} className="rounded-lg bg-white px-3 py-2 text-center text-sm font-semibold text-[#027eb5] shadow-sm">
-                          {render(t, r.label)}
+                          {renderMessage(lang, r.label)}
                         </Link>
                       ) : (
                         <button key={r.label} onClick={() => void dispatch(r.command as Action).catch(() => {})} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[#027eb5] shadow-sm">
-                          {render(t, r.label)}
+                          {renderMessage(lang, r.label)}
                         </button>
                       ),
                     )}

@@ -17,6 +17,7 @@ const NAV: Record<Role, { href: string; label: string }[]> = {
     { href: "/dispatch/fleet", label: "Fleet" },
     { href: "/dispatch/outlook", label: "Capacity outlook" },
     { href: "/dispatch/impact", label: "Impact" },
+    { href: "/dispatch/whatsapp", label: "WhatsApp" },
   ],
   loader: [{ href: "/dock", label: "Dock queue" }],
   driver: [{ href: "/driver", label: "Today's run" }],

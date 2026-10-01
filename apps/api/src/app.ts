@@ -7,21 +7,15 @@ import { accounts, actor, HttpError, login, logout } from "./auth";
 import { runCommand } from "./commands";
 import { config } from "./config";
 import { sql } from "./db";
-import { createDay, loadDay } from "./day";
+import { createDay, currentDay, DAY_COOKIE } from "./day";
 import { isConnected } from "./mq";
 import { watch } from "./realtime";
 import { commandSchema, loginSchema, smsSchema, syncSchema } from "./schemas";
 import { inboundSms, syncRecords } from "./sync";
 import { httpCache } from "./http-cache";
+import { whatsappRoutes } from "./whatsapp";
 import { buildReference, buildView } from "./view";
 
-const DAY_COOKIE = "rl_day";
-
-async function currentDay(req: FastifyRequest) {
-  const day = await loadDay(sql, req.cookies[DAY_COOKIE]);
-  if (!day) throw new HttpError(503, "No demo day yet: the seed job hasn't run.");
-  return day;
-}
 
 export function buildApp() {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, trustProxy: true });
@@ -80,7 +74,7 @@ export function buildApp() {
     const day = await currentDay(req);
     await actor(req, ["store"]);
     const outlet = String(req.query.outlet ?? "");
-    return sql`SELECT id, channel, direction, template, vars, replies, day, at, order_ref FROM messages
+    return sql`SELECT id, channel, direction, template, vars, replies, day, at, order_ref, wa_status, wa_error FROM messages
                WHERE workspace_id = ${day.id} AND outlet_id = ${outlet} ORDER BY (day = 'Today'), at, created_at`;
   });
 
@@ -114,6 +108,9 @@ export function buildApp() {
     const day = await currentDay(req);
     return inboundSms(day.id, body);
   });
+
+  // ── WhatsApp Business Platform ──
+  whatsappRoutes(app);
 
   // ── Realtime ──
   app.get("/api/stream", async (req, reply) => {

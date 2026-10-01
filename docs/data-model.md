@@ -74,7 +74,10 @@ erDiagram
 | Table | Key | Contents |
 |---|---|---|
 | `events` | `id`, ordered by `seq` | **every** state change: `type` (e.g. `load.flagged`), actor role, order, text for the feed, `payload`, demo time, `in_feed`, `open` (needs a decision). Written in the same transaction as the change. `published_at` is set once the relay has confirmed it with RabbitMQ (transactional outbox). An insert trigger sends `pg_notify('outbox')` so the relay wakes at once |
-| `messages` | `id`, unique `(source_event, order_ref, template)` | store WhatsApp and driver SMS messages written by the notifier: an English template (also the translation key) plus values and reply buttons. The unique key makes a redelivered event harmless |
+| `messages` | `id`, unique `(source_event, order_ref, template)` | store WhatsApp and driver SMS messages written by the notifier: an English template (also the translation key) plus values and reply buttons. The unique key makes a redelivered event harmless. It is also the WhatsApp outbox: `wa_status` (pending → sent → delivered → read, or failed/skipped), `wa_id`, attempts and errors |
+| `outlet_contacts` | `outlet_id` | each outlet's WhatsApp number, whether it's a live number, opt-in time, and the store's last message (opens the 24-hour window) |
+| `wa_log` | `id` | every WhatsApp Cloud API request and webhook, as sent and received, with HTTP status and signature result (never the token) |
+| `wa_inbound` | `wamid` | incoming WhatsApp messages already applied (Meta retries webhooks) |
 | `processed_messages` | `consumer, event_id` | which consumer has handled which event or job, so at-least-once delivery from RabbitMQ never applies anything twice |
 
 ## Rules the schema enforces

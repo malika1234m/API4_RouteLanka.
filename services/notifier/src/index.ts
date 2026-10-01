@@ -5,13 +5,14 @@
  * the messages catch up from its durable queue. Each event is handled once: the event id is recorded in
  * processed_messages in the same transaction as the messages it writes.
  *
- * The WhatsApp gateway is simulated: messages are stored and shown in the store's Messages screen.
- * A production deployment would add a sender that posts each new row to the WhatsApp Business API.
+ * Messages are stored (the store's Messages screen shows them) and, with WHATSAPP_MODE set, delivered on WhatsApp
+ * by the sender in ./whatsapp.ts, through Meta's Cloud API or the bundled Cloud API simulator.
  */
 import amqp from "amqplib";
 import postgres from "postgres";
 import { DELAY_REASONS, fromMin, toMin } from "@routelanka/domain";
 import * as T from "./templates";
+import { config as WA, startSender } from "./whatsapp";
 
 const sql = postgres(process.env.DATABASE_URL ?? "postgres://routelanka:routelanka@localhost:5433/routelanka", {
   max: 4,
@@ -47,9 +48,13 @@ async function orders(tx: Tx, ws: string, refs?: string[]): Promise<T.OrderRow[]
 
 async function write(tx: Tx, e: Event, msgs: T.Msg[]) {
   for (const m of msgs) {
-    await tx`INSERT INTO messages (workspace_id, source_event, channel, outlet_id, order_ref, direction, template, vars, replies, day, at)
+    // Messages to the store go out on WhatsApp (pending -> the sender). The store's own replies and the history
+    // backfilled for a new demo day stay in the app.
+    const send = (m.direction ?? "in") === "in" && (m.day ?? "Today") === "Today";
+    await tx`INSERT INTO messages (workspace_id, source_event, channel, outlet_id, order_ref, direction, template, vars, replies, day, at, wa_status)
              VALUES (${e.workspace_id}, ${e.id}, 'whatsapp', ${m.outlet_id}, ${m.order_ref}, ${m.direction ?? "in"}, ${m.template},
-                     ${tx.json((m.vars ?? {}) as never)}, ${m.replies ? tx.json(m.replies as never) : null}, ${m.day ?? "Today"}, ${m.at ?? e.at})
+                     ${tx.json((m.vars ?? {}) as never)}, ${m.replies ? tx.json(m.replies as never) : null}, ${m.day ?? "Today"}, ${m.at ?? e.at},
+                     ${send && WA.mode !== "off" ? "pending" : "local"})
              ON CONFLICT (source_event, order_ref, template) DO NOTHING`;
   }
 }
@@ -165,3 +170,4 @@ async function main() {
 }
 
 void main();
+void startSender(sql);

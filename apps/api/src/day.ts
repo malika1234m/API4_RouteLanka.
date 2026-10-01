@@ -3,7 +3,9 @@
  * the default day. A day's clock reads 03:00 at `clock_start` and runs `clock_speed` times real time.
  */
 import { clockStartFor, clockTime, toMin, type DayMeta } from "@routelanka/domain";
-import type { Sql, Tx } from "./db";
+import type { FastifyRequest } from "fastify";
+import { HttpError } from "./auth";
+import { sql, type Sql, type Tx } from "./db";
 
 export interface Day {
   id: string;
@@ -57,4 +59,13 @@ export async function createDay(db: Sql, name: string): Promise<string> {
     await tx`INSERT INTO events (workspace_id, type, actor_role, text, at, in_feed) VALUES (${r.id}, 'day.created', 'dispatcher', ${`Demo day created: ${name}`}, '03:00', false)`;
     return r.id;
   });
+}
+
+export const DAY_COOKIE = "rl_day";
+
+/** The demo day this browser is on (its cookie), or the default day. */
+export async function currentDay(req: FastifyRequest) {
+  const day = await loadDay(sql, req.cookies[DAY_COOKIE]);
+  if (!day) throw new HttpError(503, "No demo day yet: the seed job hasn't run.");
+  return day;
 }

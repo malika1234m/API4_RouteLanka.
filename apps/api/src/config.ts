@@ -4,7 +4,7 @@ const env = (k: string, fallback?: string): string => {
   return v;
 };
 
-const DEV_SECRETS = ["dev-only-secret-change-me-in-production-please", "change-me-to-a-long-random-string", "dev-sms-token"];
+const DEV_SECRETS = ["dev-only-secret-change-me-in-production-please", "change-me-to-a-long-random-string", "dev-sms-token", "dev-wa-app-secret", "dev-wa-verify-token"];
 
 export const config = {
   port: Number(env("PORT", "4000")),
@@ -17,11 +17,23 @@ export const config = {
   /** Lets the demo deliver a driver's SMS without a phone network (see /api/sms/simulate). */
   smsSimulator: env("SMS_SIMULATOR", "true") === "true",
   cookieSecure: env("COOKIE_SECURE", "false") === "true",
+  /** WhatsApp Business Platform: off, simulator (the bundled Cloud API simulator) or cloud (Meta). */
+  whatsappMode: env("WHATSAPP_MODE", "off") as "off" | "simulator" | "cloud",
+  /** The Meta app secret: every webhook is signed with it (X-Hub-Signature-256). */
+  whatsappAppSecret: env("WHATSAPP_APP_SECRET", "dev-wa-app-secret"),
+  /** Echoed back once when Meta verifies the webhook URL. */
+  whatsappVerifyToken: env("WHATSAPP_VERIFY_TOKEN", "dev-wa-verify-token"),
+  whatsappApiBase: env("WHATSAPP_API_BASE", "http://wa-sim:3200"),
+  whatsappPhoneNumberId: env("WHATSAPP_PHONE_NUMBER_ID", "100000000000001"),
+  /** Where links in messages point (the report screen). */
+  publicUrl: env("PUBLIC_URL", "http://localhost:3000"),
   instanceId: env("HOSTNAME", `api-${process.pid}`),
 };
 
 // Never run a production deployment on the development secrets.
 if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEV_SECRETS !== "true") {
-  for (const [name, value] of [["SESSION_SECRET", config.sessionSecret], ["SMS_GATEWAY_TOKEN", config.smsGatewayToken]] as const)
+  const secrets: [string, string][] = [["SESSION_SECRET", config.sessionSecret], ["SMS_GATEWAY_TOKEN", config.smsGatewayToken]];
+  if (config.whatsappMode === "cloud") secrets.push(["WHATSAPP_APP_SECRET", config.whatsappAppSecret], ["WHATSAPP_VERIFY_TOKEN", config.whatsappVerifyToken]);
+  for (const [name, value] of secrets)
     if (DEV_SECRETS.includes(value) || value.length < 12) throw new Error(`${name} must be set to a long random value in production`);
 }

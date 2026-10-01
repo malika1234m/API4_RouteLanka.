@@ -5,3 +5,5 @@ export * from "./handover";
 export * from "./labels";
 export * from "./contract";
 export * from "./sms";
+export * from "./i18n";
+export * from "./whatsapp";
