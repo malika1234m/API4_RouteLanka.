@@ -41,7 +41,7 @@ async def main():
         v = await (await ctx.request.get(BASE + "/api/view", headers={"x-rl-role": "driver"})).json()
         drv = v["driver"]
         stop = next(o["order_ref"] for o in v["orders"] if o.get("vehicle_id") == drv["vehicle_id"] and o.get("trip_id") == drv["trip_id"])
-        routes = ["/", "/login", "/guide", "/styleguide", "/preview",
+        routes = ["/", "/login", "/preview",
                   "/dispatch", "/dispatch/plan", "/dispatch/monitor", "/dispatch/map", "/dispatch/fleet", "/dispatch/outlook", "/dispatch/impact", "/dispatch/whatsapp", "/wa-sim",
                   "/dock", f"/dock/{drv['vehicle_id']}/{drv['trip_id']}",
                   "/driver", f"/driver/stop/{stop}",

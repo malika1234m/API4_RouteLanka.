@@ -59,3 +59,13 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 *.swp
+
+# ── AI assistant and editor-agent files (not part of the project) ──
+CLAUDE.md
+AGENTS.md
+.claude/
+.cursor/
+.codex/
+
+# ── Team notes kept outside the repo ─────────
+docs/video-script.md
