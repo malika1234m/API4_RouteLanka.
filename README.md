@@ -1,231 +1,176 @@
-<img src="assets/brand/icon2.jpeg" alt="RouteLanka logo" width="120" align="right">
+<img src="assets/brand/icon2.jpeg" alt="RouteLanka logo" width="110" align="right">
 
 # RouteLanka
 
-**Team API4 · Tech-Triathlon 2026 · Hackathon.** Delivery planning and tracking for Waypoint Group. One system covers
-ordering, planning, loading, delivery and receipt for four roles: **dispatcher**, **loader**, **driver** and **store manager**.
-Each role's action reaches the others straight away, through a message broker.
+Delivery planning and tracking for Waypoint Group. Team **API4**, Tech-Triathlon 2026.
 
-> **Keep this repository private.** The seed data comes from the confidential competition datasets, which must not be published.
+RouteLanka connects ordering, planning, loading, delivery and receipt for four roles: the **dispatcher**, the
+**loader**, the **driver** and the **store manager**. A decision made by one role reaches the others immediately.
 
-* Live demo: **[public URL: add after deployment]**
-* Video: **[YouTube link: add after upload]**
-* Design (Designathon submission): tag `designathon-submitted`
+| | |
+|---|---|
+| Live demo | _to be added_ |
+| Demo video | _to be added_ |
+| Designathon submission | tag [`designathon-submitted`](../../tree/designathon-submitted) |
 
----
+## Features
 
-## 1. Run it
+- **Planning engine.** Proposes a full plan within every operating rule, explains each deferral, and orders stops to
+  reduce late arrivals.
+- **Live operations.** Loader flags, driver check-ins and store replies appear on every screen as they happen.
+- **Works offline.** The driver's phone keeps working without signal and syncs later. Handover codes are checked on
+  the phone.
+- **WhatsApp for stores.** Updates and one-tap replies through the WhatsApp Business Platform, in English, Sinhala
+  or Tamil.
+- **Capacity outlook.** A 10-week forecast of demand against refrigerated capacity, using our Datathon model.
+- **Fleet and impact.** Repair priorities, hire-or-defer costs and a pilot scorecard.
 
-Requirements: Docker with Compose v2, and the competition datasets. (Node 20 or newer only for local development without Docker; the images run Node 22 LTS.)
+## Quick start
+
+**Requirements:** Docker with Compose v2, and the competition datasets.
 
 ```bash
-# 1. Put the datasets in ./data (git-ignored):  data/General Data, data/Training Data, data/Test Data
-# 2. Optional: copy the settings and change ports or secrets
+# 1. Put the datasets in ./data (General Data, Training Data, Test Data). This folder is not committed.
+# 2. Optional: change ports or secrets
 cp .env.example .env
-# 3. Start everything: Postgres, RabbitMQ, migrations + seed, planning engine, notifier, API, web
+# 3. Start the full stack with seed data
 docker compose up --build
 ```
 
-Then open **http://localhost:3000** and sign in with one of the accounts below.
+Open **http://localhost:3000**. The first start applies the database migrations and loads a realistic delivery night.
 
-| Service | URL |
+| Service | Address |
 |---|---|
 | Web app | http://localhost:3000 |
-| API (health check) | http://localhost:4000/api/health |
-| WhatsApp Cloud API simulator (stores' phones) | http://localhost:3000/wa-sim |
-| RabbitMQ management (user `routelanka`, password `routelanka`) | http://localhost:15672 |
+| Stores' WhatsApp phones (simulator) | http://localhost:3000/wa-sim |
+| API health | http://localhost:4000/api/health |
+| RabbitMQ console (`routelanka` / `routelanka`) | http://localhost:15672 |
 
-On a fresh install the `seed` job applies the migrations, loads the datasets and builds the demo night. It then exits and the
-other services start. Re-running `docker compose up` is safe: the seed rebuilds the reference data and the demo night from scratch.
+### Accounts
 
-### Seeded accounts (password `routelanka` for all four)
+The password for all four accounts is **`routelanka`**.
 
-| Role | Username | Scope | Screen size |
-|---|---|---|---|
-| Dispatcher | `gehiru.dispatch` | both depots (home: Peliyagoda) | desktop |
-| Loader | `senash.kandydock` | Kandy depot | tablet |
-| Driver | `nimsith.veh041` | VEH041, trip 1 (Kandy → Nuwara Eliya) | **phone** |
-| Store manager | `malika.out029` | outlet OUT029 | **phone** (WhatsApp) |
+| Role | Username | Works on |
+|---|---|---|
+| Dispatcher | `gehiru.dispatch` | Desktop |
+| Loader | `senash.kandydock` | Tablet |
+| Driver | `nimsith.veh041` | Phone |
+| Store manager | `malika.out029` | Phone and WhatsApp |
 
-One browser can hold all four sessions. After signing in to several accounts, switch roles from the header without
-signing in again.
+One browser can stay signed in to all four accounts and switch between them from the header. Phone screens can
+also be viewed at **`/preview`**, which shows them in a phone frame.
 
-### Developing without Docker for the apps
+## Judge walkthrough
+
+About 10 minutes, across all four roles.
+
+1. **Start a new demo day.** On the sign-in page, choose *Start a new demo day* to get your own copy of the night.
+   The clock holds at 03:00 until the plan is published.
+2. **Review the plan.** As the dispatcher, open *Plan board*. The engine has planned 135 orders: 124 served on 34
+   trips and 11 deferred, each with a reason. Select **OUT070** to see why it was deferred. Drag an order between
+   trips: any broken rule is shown, and publishing is blocked until it is fixed.
+3. **Publish.** Every store is notified and every stop receives a handover code.
+4. **Store on WhatsApp.** Open `/wa-sim?phone=94770000029` (store OUT029). Read the deferral notice and tap
+   *Noted, thanks*. The dispatcher's feed shows the reply. *Dispatcher → WhatsApp* shows each message and webhook.
+5. **Load the truck.** As the loader, open *Dock → VEH041 trip 1*. Load the orders, and flag 3 missing crates on
+   **OUT107**.
+6. **Decide the shortfall.** As the dispatcher, open *Live runs* and choose *Send short*. The store is told before
+   the truck leaves.
+7. **Release the truck.** As the loader, load the rest, then *Mark ready* and *Release*.
+8. **Deliver offline.** As the driver (`/preview`), tap *Lose signal*, open the first stop, tap *I've arrived*,
+   enter the store's handover code from step 4, and save. The delivery waits on the phone.
+9. **Report a delay.** Tap *Held up? Report a delay*. Without data signal it is sent by SMS.
+10. **Re-plan the stops.** As the dispatcher, open *Map* and *Live runs*. The vehicle appears at its last report.
+    Choose what happens to each remaining stop, then *Confirm and tell the stores*.
+11. **Store replies.** Open store OUT104's messages and tap *We'll wait*. The dispatcher sees the reply.
+12. **Signal returns.** As the driver, tap *Signal returns*. The delivery syncs with its original time, and any
+    changes made meanwhile are shown to the driver.
+13. **Confirm receipt.** The store confirms the delivery or reports a problem.
+14. **Explore.** *Fleet*, *Capacity outlook* and *Impact* show the planning side; the RabbitMQ console shows the
+    message flow.
+
+Steps 1 to 13 also run automatically: `python tests/e2e/walkthrough.py`.
+
+## Architecture
+
+Event-driven services around one shared PostgreSQL record, connected through RabbitMQ.
+
+```
+ Browsers and phones ──HTTPS──▶ API ──▶ PostgreSQL (state + events)
+          ▲                      │
+          └──── live updates ────┤ outbox relay
+                                 ▼
+                             RabbitMQ ──▶ Planning engine (Python)
+                                      ──▶ Notifier ──▶ WhatsApp Cloud API
+```
+
+- **Reliable events.** Each change and its event are saved in one transaction (transactional outbox) and published
+  with confirmation. Consumers process each event exactly once.
+- **Shared rules.** The operating rules live in one package used by the web app and the API. The engine passes the
+  organisers' `check_allocation.py`.
+- **Resilient by design.** If a worker or WhatsApp is unavailable, planning and delivery continue and messages catch
+  up later.
+
+| Folder | Contents |
+|---|---|
+| `apps/web` | Next.js web app for all four roles |
+| `apps/api` | Fastify API: sign-in, commands, views, sync, webhooks, live updates |
+| `packages/domain` | Shared types, operating rules and translations |
+| `services/engine` | Python planning engine, demand forecast, migrations and seed |
+| `services/notifier` | Store messages and the WhatsApp sender |
+| `services/wa-sim` | WhatsApp Cloud API simulator |
+| `db/migrations` | Database schema |
+| `tests` | End-to-end and smoke tests |
+
+More detail: [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [WhatsApp](docs/whatsapp.md) ·
+[AI disclosure](docs/ai-disclosure.md)
+
+## Configuration
+
+Every setting has a working default. See [`.env.example`](.env.example) for the full list.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATA_DIR` | `./data` | Location of the datasets |
+| `WEB_PORT`, `API_PORT` | `3000`, `4000` | Host ports |
+| `SEED_PASSWORD` | `routelanka` | Password for the demo accounts |
+| `SESSION_SECRET` | development value | Must be replaced in production |
+| `WHATSAPP_MODE` | `simulator` | `simulator`, `cloud` (Meta) or `off` |
+| `PUBLIC_URL` | `http://localhost:3000` | Public address used in links and the webhook URL |
+
+## Testing
 
 ```bash
-npm install
-docker compose up -d postgres rabbitmq seed engine notifier    # infrastructure, data, workers
-npm run dev -w @routelanka/api                                # API on :4000 (tsx watch)
-npm run dev -w web                                            # web on :3000 (next dev)
+npm test                                  # unit tests: rules, validation, messages, WhatsApp protocol
+cd services/engine && pytest              # engine tests, including the organisers' allocation checker
+python tests/smoke/api_flow.py            # the full night through the API
+python tests/e2e/walkthrough.py           # the judge walkthrough in a browser
+python tests/e2e/whatsapp.py              # WhatsApp messages, replies and webhook security
 ```
 
-## 2. Walkthrough for judges (about 10 minutes)
+Further browser tests cover every screen at phone and desktop size (`crawl.py`), editing and offline paths
+(`interactions.py`) and the live map (`map.py`).
 
-Each step names the account to use. Phone screens can be opened on a phone, or in **/preview**, which shows them inside a
-phone frame next to the desktop.
+## Changes from the Designathon design
 
-1. **Start fresh.** At the bottom of the sign-in page, choose *Start a new demo day*. You get your own copy of the night, so nobody else's
-   clicks interfere. The demo clock reads 03:00 and holds there until the plan is published, then runs at 15× speed.
-2. **Dispatcher, plan board** (`gehiru.dispatch` → *Plan board*). The planning engine has proposed tonight's plan: 135
-   orders, 124 served on 34 trips, 11 deferred, every deferral with a reason. Select a deferred order (e.g. **OUT070**)
-   to see why and every valid move. Drag an order between trips: rule breaks (capacity, reefer, van-only, one
-   district per trip, two trips, 270 Fresh minutes) are shown before you drop, and *Publish* stays locked while any rule is broken.
-   *Re-plan* sends a planning job to the Python engine over RabbitMQ, and the result appears without a reload.
-3. **Publish plan.** Every store gets its message, and every stop gets a random 4-digit handover code.
-4. **Store, WhatsApp.** Open **`/wa-sim?phone=94770000029`**: OUT029's phone, receiving real WhatsApp Cloud API
-   messages (see [docs/whatsapp.md](docs/whatsapp.md)). The same thread is in the app at `/preview?path=/store/messages`. A deferred store gets the reason and the new date. A served store
-   gets its arrival window and handover code. Tap *Noted, thanks* on the phone; the
-   dispatcher's feed shows the acknowledgement. **Dispatcher → WhatsApp** (`/dispatch/whatsapp`) shows every
-   request to the Cloud API and every signed webhook back, with delivery ticks.
-5. **Loader, Kandy dock** (`senash.kandydock` → *Dock* → **VEH041 trip 1**). Tick orders as they go on the truck. On
-   **OUT107**, *Flag a problem* → 3 crates missing → *Send to dispatcher*.
-6. **Dispatcher, monitor** (`/dispatch/monitor`). The flag arrives live. Choose *Send short*: the store is told before the truck leaves.
-7. **Loader.** Load the rest → *Mark ready* → *Release*. The driver's phone shows the run and the store gets "left the depot".
-8. **Driver, phone** (`nimsith.veh041`, `/preview`). Tap *Lose signal* (or turn on airplane mode on a real phone).
-   Open the first stop → *I've arrived* → type the store's handover code (from step 4's WhatsApp) → *Save delivery*.
-   The phone checks the code offline against a hash and keeps the record in its outbox.
-9. **Driver, held up.** *Held up? Report a delay* → *Send to dispatcher*. With no data signal, it goes as an SMS.
-10. **Dispatcher, map and monitor.** The vehicle shows at its last report (never a guessed live position). The delay
-    is waiting. Choose per stop: run late, move to another vehicle, or defer. Then *Confirm and tell the stores*.
-11. **Store OUT104** (`/preview?path=%2Fstore%2Fmessages%3Foutlet%3DOUT104`). The delay notice offers *We'll wait* or *Send
-    tomorrow*. Tap *We'll wait*, and the dispatcher sees the reply.
-12. **Driver, signal returns.** Tap *Signal returns*. The outbox syncs and the delivery keeps the time it was recorded.
-    Anything that changed while the driver was offline is shown as a conflict to acknowledge (*Understood*).
-13. **Store, receipt.** The store gets "Delivered, verified with your handover code" and confirms or reports a problem.
-14. **Behind the scenes.** Open the RabbitMQ management UI: exchanges `routelanka.events`, `routelanka.commands`,
-    `routelanka.dlx`. The *Fleet*, *Outlook* and *Impact* screens show fleet readiness, the 10-week capacity outlook and the night's results.
-
-The same night runs as automated tests:
-* `python tests/e2e/walkthrough.py` drives the browser through steps 1–13;
-* `python tests/smoke/api_flow.py` runs the same night through the API with assertions.
-
-## 3. Architecture
-
-Event-driven services around one shared record. Details: [docs/architecture.md](docs/architecture.md). Data model:
-[docs/data-model.md](docs/data-model.md).
-
-```
- browsers/phones ──HTTPS──▶ API (Fastify, TS) ──one transaction──▶ PostgreSQL  (state + events = outbox)
-        ▲                       │  outbox relay (LISTEN/NOTIFY, publisher confirms)
-        └──── SSE ◀─────────────┤
-                                ▼
-                            RabbitMQ ──plan.propose──▶ planning engine (Python)
-                                     ──domain events─▶ notifier (TS: WhatsApp/SMS messages)
-                                     ──all events───▶ every API instance (live screens)
-```
-
-* **Transactional outbox.** A command changes state and appends its event in the same transaction. The relay publishes it
-  with publisher confirms, so no event is ever lost or invented.
-* **Idempotent consumers.** Workers record `(consumer, event_id)` and acknowledge only after their own commit.
-  Failures go to dead-letter queues. RabbitMQ can deliver twice; nothing happens twice.
-* **Offline-first driver.** IndexedDB outbox, service worker, replays keyed by a client UUID. The server re-checks handover codes on sync.
-* **One rulebook.** The operating rules live in `packages/domain` and are shared by the web app and the API. The
-  Python engine applies the same rules and passes the organisers' `check_allocation.py`.
-* **Planning engine.** Allocation is priority-greedy with every rule checked: chilled and repeat-skipped outlets
-  first, scarce vehicles (reefers, vans) kept for the orders only they can carry, and a reason code for every
-  deferral. The organisers' `check_allocation.py` passes on scenario S1. Within each trip the engine then tries
-  every order of the stops (pairwise swaps above 7 stops). It keeps the one with the fewest expected late
-  arrivals when that saves at least a quarter of a late stop; otherwise it keeps earliest-closing-window-first,
-  an order drivers and stores recognise. Predictions come from traffic by hour and each outlet's measured
-  handling time. On the seeded night that cuts expected late stops from 29.5 to 20.6, and stops at 50%+ risk
-  from 30 to 18.
-* **One product across all three phases.** The *Capacity outlook* is our Datathon demand model (Task 2A),
-  trained by the seed job on the order history. It predicts each day from the calendar (festival run-up, paydays,
-  closed days) and adds the days up into weeks. Festivals move between weeks every year, so last year's week puts
-  the peak in the wrong place: for 2026 the old method expected the chilled peak in week 19, where Vesak fell in
-  2025, while the model finds the real squeezes in weeks 18 (Vesak) and 22 (Poson). Backtest error 3.7% against
-  9.5% for same-week-last-year. The engine's handling-time prediction uses each outlet's own history, the
-  strongest predictor in our Datathon work (error 4.7 min against 6.2 for brand and dock type).
-* **Server-side rules.** The API re-checks every change: a plan that breaks a rule can't be published, a stop
-  that has left the depot can't be re-planned from the board, and a stop handed to another vehicle on the road
-  needs a vehicle that can carry it (depot, refrigeration, van-only access, not in the workshop). Store orders
-  close at 16:00 for the next operating day.
-* **Light on the phone.** JSON is gzipped (the day view is about 9 KB instead of 100 KB) and carries an ETag,
-  so an unchanged refetch is a `304` with no body. Sinhala and Tamil fonts load only when used.
-* **WhatsApp Business Platform.** Store messages go out through the Cloud API: approved templates outside the
-  24-hour window, reply buttons inside it, in the store's language. Delivery ticks and taps come back by signed
-  webhook (HMAC-SHA256, de-duplicated, scoped to the store's own orders) into the same command handlers. A bundled
-  Cloud API simulator plays Meta so judges can see and test the whole loop; `WHATSAPP_MODE=cloud` points it at
-  Meta. Details and a five-minute check: [docs/whatsapp.md](docs/whatsapp.md).
-* **Graceful degradation.** If the notifier or engine is down, planning and delivery keep working, and messages and jobs
-  catch up from the queue. If the data signal is gone, the driver keeps working and reports delays by SMS.
-
-```
-apps/web            Next.js 16 web app (all four roles, responsive; service worker)
-apps/api            Fastify API: auth, commands, views, sync, SMS inbound, SSE, outbox relay
-packages/domain     shared types, operating rules, demo clock, handover codes, SMS format (+ tests)
-services/engine     Python: migrations, seed, allocation engine, planning worker (+ tests)
-services/notifier   TypeScript worker: events → store messages, and the WhatsApp sender (+ tests)
-services/wa-sim     WhatsApp Cloud API simulator: Meta's send endpoint, signed webhooks, phones at /wa-sim
-db/migrations       SQL schema
-tests/e2e           browser walkthrough (Playwright)
-tests/smoke         API flow test
-docs/               architecture, data model, AI disclosure
-```
-
-## 4. Configuration
-
-All settings have working defaults; see [.env.example](.env.example).
-
-| Variable | Default | Used by |
+| Design | Build | Reason |
 |---|---|---|
-| `DATA_DIR` | `./data` | seed: where the datasets are |
-| `WEB_PORT`, `API_PORT`, `POSTGRES_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT` | 3000, 4000, 5433, 5672, 15672 | host ports |
-| `POSTGRES_USER/PASSWORD/DB`, `RABBITMQ_USER/PASSWORD` | `routelanka` | infrastructure |
-| `SEED_PASSWORD` | `routelanka` | the four demo accounts |
-| `SESSION_SECRET`, `SMS_GATEWAY_TOKEN` | development values | API. A production build refuses them unless `ALLOW_DEV_SECRETS=true` |
-| `COOKIE_SECURE` | `false` | set `true` behind HTTPS |
-| `SMS_SIMULATOR` | `true` | lets the demo send a driver's SMS without a phone network |
+| Offline simulated with a toggle | Real offline support; the toggle remains for the demo | Works on a real phone in airplane mode |
+| Fixed example handover code | A random code per stop, checked against a hash | A fixed code proves nothing |
+| State kept in the browser | Shared database and live updates | Four people on four devices see the same night |
+| Planner ran once | Planner runs on request (*Re-plan*) | A slow plan never blocks the app |
+| Placeholder demand forecast | The Datathon demand model | As the prototype stated |
+| Language saved per session | Language saved on each account | The language follows the person |
+| WhatsApp shown as a mock-up | WhatsApp Business Platform integration with a simulator | A working channel judges can test |
 
-## 5. Tests
+## Notes for reviewers
 
-```bash
-npm test                                         # domain rules, API validation, notifier messages (vitest)
-cd services/engine && pytest                     # engine; includes the organisers' check_allocation.py on scenario S1
-python tests/smoke/api_flow.py                   # API flow against a running stack
-python tests/e2e/walkthrough.py                  # browser walkthrough (BASE=http://localhost:3000)
-python tests/e2e/interactions.py                 # edits, undo, re-plan, real offline, wrong code, receipt problem, languages
-python tests/e2e/crawl.py                        # every screen at desktop and phone size: errors, failed calls, overflow
-python tests/e2e/map.py                          # check-in map: keeps the user's view through live updates, moves markers in place
-python tests/e2e/whatsapp.py                     # WhatsApp over the wire: templates, ticks, taps, 24-h window, language, security
-```
+- **Demo conveniences.** The store account can view any outlet, the driver's SMS is simulated, and anyone can start a
+  new demo day. These exist only to make review easy.
+- **Security.** Hashed passwords, signed HTTP-only cookies, a role check and input validation on every command,
+  signed and de-duplicated webhooks, and no handover codes on the driver's phone.
+- **Data.** The competition datasets are confidential and not included. Keep this repository private.
 
-## 6. Departures from the Designathon design
+## Team
 
-| Design | Built | Why |
-|---|---|---|
-| Offline shown with a toggle | Real offline: service worker, IndexedDB outbox, `navigator.onLine`. The toggle remains as a demo control | So it also works on a real phone in airplane mode |
-| Handover code shown as a fixed example | Random code per stop at publish. The phone holds only a hash and the server re-checks it | A fixed code proves nothing |
-| Demo clock ran from load | Clock holds at 03:00 until the plan is published | The night starts when the plan is final |
-| Prototype state in the browser | Shared state in PostgreSQL, events through RabbitMQ, live updates by SSE | Four people on four devices see the same night |
-| Outlook used same-week-last-year as a placeholder ("the Datathon demand model replaces it in the build") | The Datathon demand model, trained at seed time | As the prototype said it would |
-| Language chosen per demo day in the prototype | Saved on each person's account | "The language follows the person, not the device" |
-| Planner ran once at build time | Planner runs as a queue worker on request (*Re-plan*) | A slow plan never blocks the app |
-
-## 7. Demo affordances and security notes
-
-The following exist **only to make judging easy**, and each is a deliberate choice:
-
-* **Store scope.** The store account can open any outlet's messages (`?outlet=`), so the walkthrough can show OUT104
-  and OUT029 from one account. In production a store user sees only their own outlet.
-* **WhatsApp simulator.** Stores' phones are simulated at `/wa-sim` (the Cloud API simulator), because judges
-  can't be given a Meta account and a phone per store. RouteLanka's side is the production code: switch with
-  `WHATSAPP_MODE=cloud` (see [docs/whatsapp.md](docs/whatsapp.md#going-live-on-meta)).
-* **SMS simulator.** `/api/sms/simulate` lets the driver's phone "send" an SMS through the API. A real gateway posts
-  to `/api/sms/inbound` with `SMS_GATEWAY_TOKEN`. Turn the simulator off with `SMS_SIMULATOR=false`.
-* **Role switcher and New demo day.** One browser holds all four sessions, and anyone can start a fresh copy of the night.
-
-Security in place: bcrypt password hashes; signed, HTTP-only, SameSite session cookies; a role check on every
-command (`COMMAND_ROLES`); zod validation of every input; parameterised SQL only; production refuses development
-secrets; handover codes are never sent to the driver.
-
-## 8. Data
-
-The datasets are confidential (competition terms) and are **not** in this repository. Put them in `./data` before
-`docker compose up`. The seed builds the demo night from scenario S1 (Peliyagoda) and a Kandy Friday from the
-history, and measures the engine's prediction parameters from the route records.
-
-## 9. Team and AI disclosure
-
-Malika Nishnatha, Gehiru Damnidu, Senash Adeesha, Nimsith Senevirathna, Ravindu Lakshan. How AI tools were used:
-[docs/ai-disclosure.md](docs/ai-disclosure.md).
+Malika Nishnatha, Gehiru Damnidu, Senash Adeesha, Nimsith Senevirathna, Ravindu Lakshan.
