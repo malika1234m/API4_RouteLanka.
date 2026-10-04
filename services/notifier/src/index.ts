@@ -24,8 +24,6 @@ const RABBIT = process.env.RABBITMQ_URL ?? "amqp://routelanka:routelanka@localho
 const QUEUE = "notifier.events";
 const KEYS = ["day.created", "order.placed", "plan.published", "load.decided", "trip.departed", "delay.planned", "store.replied", "store.acknowledged", "stop.delivered", "receipt.confirmed", "stop.reassigned"];
 
-/** "2026-04-25" -> "Saturday 25 April": the form the store's messages (and their translations) use. */
-const dayName = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).replace(",", "");
 
 interface Event {
   id: string;
@@ -66,13 +64,17 @@ async function handle(tx: Tx, e: Event) {
       // Receipts for the orders placed before the cutoff (the seeded day's orders came in yesterday).
       const [d] = await tx<{ service_date: string }[]>`SELECT service_date::text FROM workspaces WHERE id = ${e.workspace_id}`;
       const os = await tx<T.OrderRow[]>`SELECT o.order_ref, o.outlet_id, o.brand, o.temp_requirement, o.order_units FROM orders o WHERE workspace_id = ${e.workspace_id} AND run_date = ${d.service_date}::date`;
-      return write(tx, e, os.map((o) => T.received(o, "Yesterday", "Friday 24 April", "15:12")));
+      return write(tx, e, os.map((o) => T.received(o, "Yesterday", d.service_date, "15:12")));
     }
     case "order.placed":
-      return write(tx, e, [T.received(await one(), "Today", dayName(String(e.payload.run_date)), e.at)]);
+      return write(tx, e, [T.received(await one(), "Today", String(e.payload.run_date), e.at)]);
     case "plan.published": {
       const os = (await orders(tx, e.workspace_id)).filter((o) => o.decision);
-      if (!e.payload.republish) return write(tx, e, os.flatMap(T.published));
+      // A deferred order moves to the next operating night after this one.
+      const [n] = await tx<{ d: string }[]>`
+        SELECT c.date::text AS d FROM calendar c JOIN workspaces w ON c.date > w.service_date WHERE w.id = ${e.workspace_id} AND c.is_operating ORDER BY c.date LIMIT 1`;
+      const pub = (o: T.OrderRow) => T.published(o, n?.d ?? "");
+      if (!e.payload.republish) return write(tx, e, os.flatMap(pub));
       // Published changes: tell only the stores whose order changed since the last published plan.
       type Snap = { ref: string; d: string; v: string | null; t: number | null }[];
       const [prev] = await tx<{ snapshot: Snap }[]>`
@@ -83,10 +85,10 @@ async function handle(tx: Tx, e: Event) {
         e,
         os.flatMap((o) => {
           const b = before.get(o.order_ref);
-          if (!b) return T.published(o);
+          if (!b) return pub(o);
           if (b.d === o.decision && (o.decision === "deferred" || b.v === o.vehicle_id)) return [];
           // Newly deferred: the deferral notice. Newly served: window and handover code. Moved: the new window only.
-          return b.d === "served" && o.decision === "served" ? T.published(o).slice(0, 1) : T.published(o);
+          return b.d === "served" && o.decision === "served" ? pub(o).slice(0, 1) : pub(o);
         }),
       );
     }
@@ -100,8 +102,9 @@ async function handle(tx: Tx, e: Event) {
     case "delay.planned": {
       const plan = e.payload.plan as Record<string, "late" | "move" | "defer">;
       const [ds] = await tx<{ delay: { minutes: number; reason: string } | null }[]>`
-        SELECT d.delay FROM driver_status d JOIN workspaces w ON w.id = d.workspace_id AND d.vehicle_id = w.meta->'personas'->'driver'->>'vehicle_id'
-        WHERE d.workspace_id = ${e.workspace_id}`;
+        SELECT d.delay FROM driver_status d JOIN workspaces w ON w.id = d.workspace_id
+        WHERE d.workspace_id = ${e.workspace_id}
+          AND d.vehicle_id = coalesce(${(e.payload.vehicle_id as string | undefined) ?? null}, w.meta->'personas'->'driver'->>'vehicle_id')`;
       const mins = ds?.delay?.minutes ?? 0;
       const why = (DELAY_REASONS.find((r) => r.id === ds?.delay?.reason)?.label ?? "Road disruption").toLowerCase();
       const os = await orders(tx, e.workspace_id, Object.keys(plan));

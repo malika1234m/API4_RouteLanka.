@@ -8,7 +8,11 @@ export { REASON_LABEL, deferralConsequence, tripKey } from "@routelanka/domain";
 
 export interface SeedData {
   meta: DayMeta & { date: string };
+  /** The next two operating nights after this one. */
+  next_runs: string[];
   personas: Personas;
+  /** The people signed in on this browser. */
+  me: DayView["me"];
   outlets: Outlet[];
   vehicles: Vehicle[];
   districts: District[];
@@ -30,6 +34,8 @@ const PERSONAS: Personas = {
 export const seed: SeedData = {
   meta: { date: "2026-04-24", dow: "Friday", festival: "Vesak", festival_date: "2026-05-01", cutoff: "16:00", fresh_budget: 270, day_budget: 480, monsoon: 1, personas: PERSONAS },
   personas: PERSONAS,
+  next_runs: ["2026-04-25", "2026-04-27"],
+  me: {},
   outlets: [],
   vehicles: [],
   districts: [],
@@ -58,11 +64,25 @@ export function setReference(r: Reference) {
 
 export function setDay(v: DayView) {
   seed.meta = { ...v.day.meta, date: v.day.service_date };
-  seed.personas = v.day.meta.personas;
+  seed.next_runs = v.day.next_runs?.length ? v.day.next_runs : seed.next_runs;
+  // Each signed-in person's own name and work (their store, depot or vehicle) replace the demo persona's,
+  // so every screen opens on what that person covers.
+  const p = v.day.meta.personas;
+  const me = v.me ?? {};
+  seed.me = me;
+  seed.personas = {
+    dispatcher: { ...p.dispatcher, ...pick(me.dispatcher, "name", "depot") },
+    loader: { ...p.loader, ...pick(me.loader, "name", "depot") },
+    driver: { ...p.driver, ...pick(me.driver, "name", "vehicle_id", "trip_id") },
+    store: { ...p.store, ...pick(me.store, "name", "outlet_id") },
+  };
   seed.vehicles = v.vehicles;
   seed.trips = v.trips;
   seed.orders = v.orders;
 }
+
+const pick = <T extends object, K extends keyof T>(o: T | undefined, ...keys: K[]): Partial<Pick<T, K>> =>
+  o ? (Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]])) as Partial<Pick<T, K>>) : {};
 
 export const vehicleLabel = (v?: Vehicle) => (v ? `${v.vehicle_id} · ${v.temp === "reefer" ? "refrigerated " : ""}${v.type}` : "");
 

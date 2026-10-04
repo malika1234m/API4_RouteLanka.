@@ -1,18 +1,20 @@
 "use client";
 
 import { OutletPicker, useOutlet } from "@/components/OutletPicker";
-import { demoWhatsAppNumber, formatPhone } from "@routelanka/domain";
+import { dateLabel } from "@routelanka/domain";
 import { Shell } from "@/components/Shell";
+import { WhatsAppStatus } from "@/components/WhatsAppConnect";
 import { Btn, BtnLink, Card, IconChat, IconCheck, IconLock, IconNoSignal, RelayTrack, Rich, stageChip } from "@/components/ui";
 import { deferralConsequence, outletById, REASON_LABEL, seed, tripKey, vehicleById } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
 import type { Order } from "@/lib/types";
 import { useT } from "@/lib/i18n";
 import { delayedEta } from "@/lib/delay";
+import { runFor } from "@/lib/runs";
 
 export default function MyDeliveries() {
   const { s } = useDemo();
-  const { t } = useT("store");
+  const { t, lang } = useT("store");
   const [outletId, setOutlet] = useOutlet();
   const outlet = outletById.get(outletId)!;
   const orders = s.orders.filter((o) => o.outlet_id === outletId);
@@ -25,13 +27,13 @@ export default function MyDeliveries() {
         <OutletPicker id={outletId} onChange={setOutlet} />
       </div>
       <p className="text-mute">
-        {t("Friday 24 April · receiving window {a}–{b}", { a: outlet.window_open_time, b: outlet.window_close_time })}
+        {t("{d} · receiving window {a}–{b}", { d: dateLabel(lang, s.day.service_date), a: outlet.window_open_time, b: outlet.window_close_time })}
         {outlet.mall_window ? ` · ${t("mall bay {w}", { w: outlet.mall_window })}` : ""}
       </p>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="space-y-3">
-          {orders.length === 0 && <Card className="p-4 text-mute">{t("No orders for Friday's run at this outlet.")}</Card>}
+          {orders.length === 0 && <Card className="p-4 text-mute">{t("No orders for the {w} run at this outlet.", { w: dateLabel(lang, s.day.service_date, "weekday") })}</Card>}
           {orders.map((o) => (
             <OrderCard key={o.order_ref} o={o} />
           ))}
@@ -144,14 +146,11 @@ function Glance({ outletId }: { outletId: string }) {
           <span className="grid size-7 place-items-center rounded-full bg-[#25d366] text-white"><IconChat className="size-4" /></span>
           {t("Updates by WhatsApp")}
         </p>
-        <p className="mt-1 text-sm text-mute">{formatPhone(demoWhatsAppNumber(outletId))}</p>
+        <WhatsAppStatus outlet={outletId} />
         <p className="mt-1 text-xs text-mute">{t("Messages are sent in the store's chosen language. No app to install: outlet staff change often.")}</p>
         <BtnLink href="/store/messages" className="mt-3 w-full">
           {t("Open messages")}
         </BtnLink>
-        <a href={`/wa-sim?phone=${demoWhatsAppNumber(outletId)}`} target="_blank" rel="noreferrer" className="mt-2 block text-center text-xs font-semibold text-[#027eb5] underline">
-          See it on this store&apos;s phone (WhatsApp simulator)
-        </a>
       </Card>
       <Card>
         <p className="border-b border-line px-4 py-2.5 text-sm font-semibold">{t("Notices for this outlet")}</p>
@@ -171,11 +170,11 @@ function Glance({ outletId }: { outletId: string }) {
 
 function OrderCard({ o }: { o: Order }) {
   const { s, dispatch } = useDemo();
-  const { t } = useT("store");
+  const { t, lang } = useT("store");
   const st = s.states[o.order_ref];
   const unit = t(o.brand === "Fresh" ? "crates" : "units");
-  const onDriverRun = tripKey(o) === `${seed.personas.driver.vehicle_id}#${seed.personas.driver.trip_id}`;
-  const driverOffline = onDriverRun && !s.driver.online && st.stage === "on_road";
+  const phone = o.vehicle_id ? runFor(s, tripKey(o)) : undefined;
+  const driverOffline = !!phone && !phone.online && st.stage === "on_road";
   const v = o.vehicle_id ? vehicleById.get(o.vehicle_id) : undefined;
   const stops = new Set(s.orders.filter((x) => tripKey(x) === tripKey(o) && x.decision === "served").map((x) => x.stop_seq)).size;
   const likelyLate = (o.pred_late_prob ?? 0) >= 0.5;
@@ -183,14 +182,14 @@ function OrderCard({ o }: { o: Order }) {
   let line: React.ReactNode;
   if (!s.published) line = t("Confirmed. You'll see the arrival time here once tonight's plan is published, usually by 16:30.");
   else if (st.deferred)
-    line = <Rich text={t("**Not coming on Friday's run.** {c} Reason: {r}. Moved to **Saturday 25 April**, and you are first in line.", { c: t(deferralConsequence(o)), r: t(REASON_LABEL[o.reason ?? "dispatcher_choice"].toLowerCase()) })} />;
+    line = <Rich text={t("**Not coming on the {w} run.** {c} Reason: {r}. Moved to **{d}**, and you are first in line.", { w: dateLabel(lang, s.day.service_date, "weekday"), d: dateLabel(lang, s.day.next_runs?.[0] ?? seed.next_runs[0]), c: t(deferralConsequence(o)), r: t(REASON_LABEL[o.reason ?? "dispatcher_choice"].toLowerCase()) })} />;
   else if (st.receipt) line = st.receipt.ok ? t("Received in full. Thank you.") : t("You reported {q} × {k}. The dispatcher has it.", { q: st.receipt.issue?.qty, k: t(st.receipt.issue?.kind ?? "") });
   else if (st.stage === "delivered")
     line =
       (st.pod?.method === "code"
         ? t("Delivered at {t}: {a} of {b} {u}, verified with your handover code.", { t: st.deliveredAt, a: st.deliveredUnits, b: o.order_units, u: unit })
         : t("Delivered at {t}: {a} of {b} {u}, signed by {n}.", { t: st.deliveredAt, a: st.deliveredUnits, b: o.order_units, u: unit, n: st.pod?.name })) + (st.recordedOffline ? t(" Recorded on the driver's phone without signal and sent later.") : "");
-  else if (s.delayPlan[o.order_ref] && s.delayToldAt) {
+  else if (s.delayPlan[o.order_ref] && (phone?.delay?.toldAt || s.delayToldAt)) {
     const plan = s.delayPlan[o.order_ref];
     const eta = delayedEta(s, o);
     const reply = s.storeReplies[o.order_ref];

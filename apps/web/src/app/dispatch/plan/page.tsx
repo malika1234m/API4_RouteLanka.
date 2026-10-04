@@ -3,7 +3,8 @@
 import { useMemo, useState, type DragEvent } from "react";
 import { DepotToggle } from "@/components/DepotToggle";
 import { Shell } from "@/components/Shell";
-import { Btn, Card, Chip, Meter, OrderMarks } from "@/components/ui";
+import { RouteMap, TRIP_STYLE } from "@/components/RouteMap";
+import { Btn, Card, Chip, IconMap, Meter, OrderMarks } from "@/components/ui";
 import { checkMove, DAY_BUDGET, FRESH_BUDGET, loadsFor, vehicleUse, violations } from "@/lib/rules";
 import { REASON_LABEL, seed, vehicleById } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
@@ -29,6 +30,8 @@ export default function PlanBoard() {
   const { s, dispatch } = useDemo();
   const [depot, setDepot] = useState(seed.personas.dispatcher.depot);
   const [sel, setSel] = useState<string | null>(null);
+  // The vehicle whose route is open in the side panel.
+  const [routeVid, setRouteVid] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
@@ -170,7 +173,7 @@ export default function PlanBoard() {
         <section aria-label="Vehicles and trips">
           <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
             {used.map((v) => (
-              <VehicleCard key={v.vehicle_id} vid={v.vehicle_id} orders={s.orders} dnd={dnd} />
+              <VehicleCard key={v.vehicle_id} vid={v.vehicle_id} orders={s.orders} dnd={dnd} routeOpen={routeVid === v.vehicle_id} onRoute={() => setRouteVid((r) => (r === v.vehicle_id ? null : v.vehicle_id))} />
             ))}
           </div>
           <div className="mt-3 rounded-lg border border-dashed border-line bg-card/60 p-3">
@@ -195,6 +198,7 @@ export default function PlanBoard() {
 
         <aside className="space-y-3 lg:sticky lg:top-28 lg:self-start">
           {selected && <MovePanel o={selected} onClose={() => setSel(null)} act={act} />}
+          {routeVid && <RoutePanel vid={routeVid} orders={s.orders} onClose={() => setRouteVid(null)} />}
           <DropZone target="defer" dnd={dnd} className="block rounded-lg border border-line bg-card">
             <div className="border-b border-line px-3 py-2">
               <p className="font-cond text-lg font-semibold">Deferred to the next run ({deferred.length})</p>
@@ -294,7 +298,7 @@ function OrderRow({ o, dnd, variant }: { o: Order; dnd: Dnd; variant: "trip" | "
   );
 }
 
-function VehicleCard({ vid, orders, dnd }: { vid: string; orders: Order[]; dnd: Dnd }) {
+function VehicleCard({ vid, orders, dnd, routeOpen, onRoute }: { vid: string; orders: Order[]; dnd: Dnd; routeOpen: boolean; onRoute: () => void }) {
   const v = vehicleById.get(vid)!;
   const loads = loadsFor(v, orders);
   const u = vehicleUse(v, loads);
@@ -309,6 +313,14 @@ function VehicleCard({ vid, orders, dnd }: { vid: string; orders: Order[]; dnd: 
         <span className="ml-auto text-xs text-mute">
           {v.volume_cap_m3} m³ · {v.weight_cap_kg.toLocaleString()} kg
         </span>
+        <button
+          onClick={onRoute}
+          aria-pressed={routeOpen}
+          title={`Show ${v.vehicle_id}'s route on a map`}
+          className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-semibold ${routeOpen ? "border-night bg-night text-white" : "border-line text-night hover:border-night"}`}
+        >
+          <IconMap className="size-3.5" /> Route
+        </button>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-3">
         {loads.some((l) => l.brand === "Fresh") && <Meter label="Fresh window" used={u.fresh} cap={FRESH_BUDGET} unit="min" />}
@@ -341,6 +353,77 @@ function VehicleCard({ vid, orders, dnd }: { vid: string; orders: Order[]; dnd: 
         </DropZone>
       )}
       {bad.length > 0 && <ul className="mt-2 text-sm text-late">{bad.map((b) => <li key={b}>{b}</li>)}</ul>}
+    </Card>
+  );
+}
+
+/** A vehicle's route: depot, each trip's stops in order, and back, on a map and as an itinerary. Follows every drag. */
+function RoutePanel({ vid, orders, onClose }: { vid: string; orders: Order[]; onClose: () => void }) {
+  const v = vehicleById.get(vid)!;
+  const loads = loadsFor(v, orders);
+  const trips = loads.map((l) => {
+    const stops = [...l.orders].sort((a, b) => (a.stop_seq ?? 99) - (b.stop_seq ?? 99));
+    const meta = seed.trips.find((t) => t.vehicle_id === vid && t.trip_id === l.trip_id);
+    return { l, stops, meta };
+  });
+  return (
+    <Card className="p-3">
+      <div className="flex items-start gap-2">
+        <div>
+          <p className="font-cond text-lg font-semibold leading-tight">{vid} route</p>
+          <p className="text-xs text-mute">
+            From {v.depot} depot · {trips.length} {trips.length === 1 ? "trip" : "trips"} · {trips.reduce((n, t) => n + t.stops.length, 0)} stops
+          </p>
+        </div>
+        <button onClick={onClose} className="ml-auto grid size-8 place-items-center rounded-md text-mute hover:bg-paper hover:text-night" aria-label="Close route">
+          ×
+        </button>
+      </div>
+      {trips.length === 0 ? (
+        <p className="mt-3 text-sm text-mute">No trips on this vehicle now.</p>
+      ) : (
+        <>
+          <div className="mt-2">
+            <RouteMap depot={v.depot} trips={trips.map((t) => ({ trip_id: t.l.trip_id, stops: t.stops.map((o, i) => ({ outlet_id: o.outlet_id, district: o.district, seq: i + 1 })) }))} />
+          </div>
+          <ol className="mt-3 space-y-3 text-sm">
+            {trips.map(({ l, stops, meta }) => {
+              const style = TRIP_STYLE[l.trip_id] ?? TRIP_STYLE[1];
+              return (
+                <li key={l.trip_id}>
+                  <p className="flex items-center gap-2 font-semibold">
+                    <svg width="22" height="6" aria-hidden>
+                      <line x1="0" y1="3" x2="22" y2="3" stroke={style.color} strokeWidth="4" strokeDasharray={style.dash} />
+                    </svg>
+                    Trip {l.trip_id} · {l.brand} {l.district}
+                    <span className="ml-auto font-cond font-normal text-mute">
+                      {meta ? `${Math.round(meta.km)} km · ` : ""}
+                      {Math.round(l.minutes)} min
+                    </span>
+                  </p>
+                  <ol className="mt-1 border-l-2 pl-3" style={{ borderColor: style.color }}>
+                    <li className="text-mute">Leave {v.depot} depot{meta?.depart ? ` at ${meta.depart}` : ""}</li>
+                    {stops.map((o, i) => (
+                      <li key={o.order_ref} className="flex gap-2 py-0.5">
+                        <span className="w-4 text-right font-cond font-bold">{i + 1}</span>
+                        <span className="font-cond font-semibold">{o.outlet_id}</span>
+                        <span className="text-mute">
+                          window {o.window_open_time}–{o.window_close_time}
+                        </span>
+                        {o.pred_arrival && (
+                          <span className={`ml-auto font-cond ${(o.pred_late_prob ?? 0) >= 0.5 ? "font-semibold text-late" : "text-mute"}`}>ETA {o.pred_arrival}</span>
+                        )}
+                      </li>
+                    ))}
+                    <li className="text-mute">Back to {v.depot} depot</li>
+                  </ol>
+                </li>
+              );
+            })}
+          </ol>
+          <p className="mt-3 text-xs text-mute">Store positions are approximate (the data has no addresses) and lines are straight, not roads. Times and distances come from the plan.</p>
+        </>
+      )}
     </Card>
   );
 }

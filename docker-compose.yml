@@ -11,6 +11,8 @@ x-whatsapp: &whatsapp
   WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-dev-wa-app-secret}
   WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-dev-wa-verify-token}
   WHATSAPP_LIVE_NUMBERS: ${WHATSAPP_LIVE_NUMBERS:-}
+  # The business number stores send their JOIN message to (digits only, as people dial it).
+  WHATSAPP_BUSINESS_NUMBER: ${WHATSAPP_BUSINESS_NUMBER:-94110000000}
 
 x-env: &env
   DATABASE_URL: postgres://${POSTGRES_USER:-routelanka}:${POSTGRES_PASSWORD:-routelanka}@postgres:5432/${POSTGRES_DB:-routelanka}

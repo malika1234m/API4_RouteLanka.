@@ -3,17 +3,18 @@ import cookie from "@fastify/cookie";
 import Fastify, { type FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { COMMAND_ROLES, type Command, type Role } from "@routelanka/domain";
-import { accounts, actor, HttpError, login, logout } from "./auth";
+import { accounts, actor, coversStore, HttpError, login, logout } from "./auth";
 import { runCommand } from "./commands";
 import { config } from "./config";
 import { sql } from "./db";
 import { createDay, currentDay, DAY_COOKIE } from "./day";
 import { isConnected } from "./mq";
 import { watch } from "./realtime";
-import { commandSchema, loginSchema, smsSchema, syncSchema } from "./schemas";
+import { commandSchema, daySchema, loginSchema, smsSchema, syncSchema } from "./schemas";
 import { inboundSms, syncRecords } from "./sync";
 import { httpCache } from "./http-cache";
 import { whatsappRoutes } from "./whatsapp";
+import { teamRoutes } from "./team";
 import { buildReference, buildView } from "./view";
 
 
@@ -51,9 +52,30 @@ export function buildApp() {
     const d = await currentDay(req);
     return { id: d.id, name: d.name, service_date: d.service_date };
   });
-  app.post("/api/day/new", async (_req, reply) => {
-    const id = await createDay(sql, `Fresh demo day ${new Date().toISOString().slice(0, 16).replace("T", " ")}`);
+  // The nights a judge can start a demo day for: the walkthrough night, or any night in the order history.
+  app.get("/api/day/nights", async () => {
+    const [[t], dates] = await Promise.all([
+      sql<{ service_date: string }[]>`SELECT service_date::text FROM workspaces WHERE is_template`,
+      sql<{ d: string }[]>`SELECT DISTINCT order_date::text AS d FROM order_history ORDER BY 1`,
+    ]);
+    return { walkthrough: t?.service_date ?? null, history: dates.map((r) => r.d) };
+  });
+  app.post("/api/day/new", async (req, reply) => {
+    const { night } = daySchema.parse(req.body ?? {});
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const id = await createDay(sql, night ? `Night of ${night} (from the history), started ${stamp}` : `Fresh demo day ${stamp}`, night);
     reply.setCookie(DAY_COOKIE, id, { httpOnly: true, sameSite: "lax", secure: config.cookieSecure, path: "/", maxAge: 7 * 24 * 3600 });
+    if (night) {
+      // The engine plans the night (the same job as Re-plan). Wait for it, so the board opens with a plan.
+      const { job } = (await runCommand(id, { type: "proposePlan" }, { uid: "", role: "dispatcher", name: "Planner", username: "system" })) as { job: string };
+      for (let i = 0; i < 60; i++) {
+        const [j] = await sql<{ status: string; summary: Record<string, number> | null; error: string | null }[]>`SELECT status, summary, error FROM plan_jobs WHERE id = ${job}`;
+        if (j?.status === "done") return { id, plan: j.summary };
+        if (j?.status === "failed") throw new HttpError(500, `The planner couldn't plan that night: ${j.error}`);
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return { id, plan: null, note: "The planner is still working; the plan board updates when it's done." };
+    }
     return { id };
   });
 
@@ -68,12 +90,14 @@ export function buildApp() {
     } catch {
       role = undefined;
     }
-    return buildView(day, role);
+    return buildView(day, role, await accounts(req));
   });
   app.get<{ Querystring: { outlet?: string } }>("/api/messages", async (req) => {
     const day = await currentDay(req);
-    await actor(req, ["store"]);
+    const who = await actor(req, ["store"]);
     const outlet = String(req.query.outlet ?? "");
+    const [o] = await sql<{ district: string }[]>`SELECT district FROM outlets WHERE outlet_id = ${outlet}`;
+    if (!coversStore(who, { outlet_id: outlet, district: o?.district })) throw new HttpError(403, "You can only read your own store's messages.");
     return sql`SELECT id, channel, direction, template, vars, replies, day, at, order_ref, wa_status, wa_error FROM messages
                WHERE workspace_id = ${day.id} AND outlet_id = ${outlet} ORDER BY (day = 'Today'), at, created_at`;
   });
@@ -108,6 +132,9 @@ export function buildApp() {
     const day = await currentDay(req);
     return inboundSms(day.id, body);
   });
+
+  // ── Staff accounts (dispatchers) ──
+  teamRoutes(app);
 
   // ── WhatsApp Business Platform ──
   whatsappRoutes(app);

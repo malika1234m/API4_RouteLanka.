@@ -12,14 +12,18 @@ import { recordDelay, reconnect } from "./commands";
 import { sql, type Tx } from "./db";
 import { lockDay, now, skipTo, type Day } from "./day";
 import { appendEvent } from "./events";
+import { ensureStatus, vehicleOf } from "./runs";
 
 async function applyRecord(tx: Tx, day: Day, e: FieldEvent, offline: boolean, who: Account): Promise<{ day: Day; applied: boolean }> {
-  const vid = day.meta.personas.driver.vehicle_id;
+  const vid = vehicleOf(day, who);
+  await ensureStatus(tx, day.id, vid);
   const [o] = await tx<{ outlet_id: string; stage: string; reassigned_to: string | null; handover_code: string | null; pred_window: string | null; vehicle_id: string | null }[]>`
     SELECT o.outlet_id, p.stage, p.reassigned_to, p.handover_code, a.pred_window, a.vehicle_id
     FROM orders o JOIN order_progress p USING (workspace_id, order_ref) JOIN assignments a USING (workspace_id, order_ref)
     WHERE o.workspace_id = ${day.id} AND o.order_ref = ${e.order_ref}`;
   if (!o || o.vehicle_id !== vid) throw new HttpError(400, `${e.order_ref} is not on this driver's run.`);
+  // The flow is load, release, deliver: nothing is recorded at a store before the loader releases the truck.
+  if (!["on_road", "delivered", "received"].includes(o.stage)) throw new HttpError(409, `${o.outlet_id}: the truck hasn't left the dock yet. The loader releases it first.`);
 
   let at = e.at;
   if (!offline && e.type === "arrived") {
@@ -85,16 +89,16 @@ export async function syncRecords(dayId: string, events: FieldEvent[], offline: 
     if (offline) {
       const delivered = sorted.filter((e) => e.type === "delivered").length;
       const arrived = sorted.length - delivered;
-      conflicts = await reconnect(tx, day, delivered, arrived);
+      conflicts = await reconnect(tx, day, vehicleOf(day, who), delivered, arrived);
       if (accepted)
         await appendEvent(tx, day.id, now(day), {
           type: "driver.synced",
           role: who.role,
           kind: "sync",
-          text: `${day.meta.personas.driver.vehicle_id} back online: ${delivered} ${delivered === 1 ? "delivery" : "deliveries"} and ${arrived} arrival ${arrived === 1 ? "time" : "times"} synced, with the times they were recorded`,
+          text: `${vehicleOf(day, who)} back online: ${delivered} ${delivered === 1 ? "delivery" : "deliveries"} and ${arrived} arrival ${arrived === 1 ? "time" : "times"} synced, with the times they were recorded`,
           payload: { accepted, duplicates, delivered, arrived },
         });
-      else await appendEvent(tx, day.id, now(day), { type: "driver.online", role: who.role, text: "Driver back online", inFeed: false });
+      else await appendEvent(tx, day.id, now(day), { type: "driver.online", role: who.role, text: `${vehicleOf(day, who)} back online`, inFeed: false });
     }
     return { accepted, duplicates, conflicts };
   });
@@ -106,9 +110,11 @@ export async function inboundSms(dayId: string, body: string) {
   if (!d) throw new HttpError(400, "Not a RouteLanka delay report.");
   return sql.begin(async (tx) => {
     const day = await lockDay(tx, dayId);
-    if (d.vehicle_id !== day.meta.personas.driver.vehicle_id) throw new HttpError(400, "Unknown vehicle.");
+    // Only a vehicle with a driver's phone on it (an active driver account, or the demo run) can report.
+    const [known] = await tx`SELECT 1 FROM users WHERE role = 'driver' AND active AND vehicle_id = ${d.vehicle_id}`;
+    if (!known && d.vehicle_id !== day.meta.personas.driver.vehicle_id) throw new HttpError(400, "Unknown vehicle.");
     const label = DELAY_REASONS.find((r) => r.id === d.reason)!.label;
-    await recordDelay(tx, day, { reason: d.reason, minutes: d.minutes, near: d.near, label, smsDone: d.done }, "driver", true);
+    await recordDelay(tx, day, d.vehicle_id, { reason: d.reason, minutes: d.minutes, near: d.near, label, smsDone: d.done }, "driver", true);
     return { ok: true };
   });
 }

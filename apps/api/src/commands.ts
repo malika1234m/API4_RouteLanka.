@@ -9,10 +9,11 @@
 import { cannotCarry, checkMove, planViolations, tripKey, type Command, type District, type Order, type RuleRef, type Vehicle } from "@routelanka/domain";
 import { randomInt } from "node:crypto";
 import type { Account } from "./auth";
-import { HttpError } from "./auth";
+import { coversStore, HttpError } from "./auth";
 import { sql, type Tx } from "./db";
 import { lockDay, now, skipTo, type Day } from "./day";
 import { appendEvent } from "./events";
+import { ensureStatus, vehicleOf } from "./runs";
 
 const REF_CACHE: { districts?: Map<string, District>; allowance?: Map<string, number> } = {};
 
@@ -195,14 +196,15 @@ const handlers: Handlers = {
   },
 
   async setOnline(tx, day, c, who) {
-    const vid = day.meta.personas.driver.vehicle_id;
+    const vid = vehicleOf(day, who);
+    await ensureStatus(tx, day.id, vid);
     const at = now(day);
     if (!c.online) {
       await tx`UPDATE driver_status SET online = false, offline_since = ${at} WHERE workspace_id = ${day.id} AND vehicle_id = ${vid} AND online`;
       await appendEvent(tx, day.id, at, { type: "driver.offline", role: who.role, text: `${vid}: no signal since ${at}`, inFeed: false });
       return;
     }
-    await reconnect(tx, day, 0, 0);
+    await reconnect(tx, day, vid, 0, 0);
     await appendEvent(tx, day.id, at, { type: "driver.online", role: who.role, text: `${vid} back online`, inFeed: false });
   },
 
@@ -214,14 +216,15 @@ const handlers: Handlers = {
     await appendEvent(tx, day.id, now(day), { type: "stop.reassigned", role: who.role, kind: "decision", ref: c.ref, text: `${o.outlet_id} moved to ${c.to}. The original driver will be told when their phone reconnects.`, payload: { to: c.to } });
   },
 
-  async ackConflict(tx, day, c) {
-    const vid = day.meta.personas.driver.vehicle_id;
+  async ackConflict(tx, day, c, who) {
+    const vid = vehicleOf(day, who);
     await tx`UPDATE driver_status SET conflicts = coalesce((SELECT jsonb_agg(x) FROM jsonb_array_elements(conflicts) x WHERE x->>'ref' <> ${c.ref}), '[]')
              WHERE workspace_id = ${day.id} AND vehicle_id = ${vid}`;
   },
 
   async receive(tx, day, c, who) {
     const o = await orderOf(tx, day, c.ref);
+    ownStore(who, o);
     if (!["on_road", "delivered"].includes(o.stage)) throw new HttpError(409, "This order hasn't left the depot yet.");
     await tx`UPDATE order_progress SET stage = 'received', receipt = ${tx.json({ ok: c.ok, issue: c.issue } as never)} WHERE workspace_id = ${day.id} AND order_ref = ${c.ref}`;
     await appendEvent(tx, day.id, now(day), c.ok
@@ -234,6 +237,7 @@ const handlers: Handlers = {
     const outlet = (c as { outlet_id?: string }).outlet_id ?? u?.outlet_id;
     const [out] = await tx<{ outlet_id: string; brand: string; district: string; depot: string }[]>`SELECT outlet_id, brand, district, depot FROM outlets WHERE outlet_id = ${outlet ?? ""}`;
     if (!out) throw new HttpError(400, "Unknown outlet.");
+    ownStore(who, out);
     const lines = c.lines.filter((l) => l.units > 0);
     if (!lines.length) throw new HttpError(400, "Add at least one item.");
     if (out.brand !== "Fresh" && lines.some((l) => l.temp === "chilled")) throw new HttpError(400, "Only Fresh outlets order chilled goods.");
@@ -269,6 +273,7 @@ const handlers: Handlers = {
 
   async ack(tx, day, c, who) {
     const o = await orderOf(tx, day, c.ref);
+    ownStore(who, o);
     const [row] = await tx`UPDATE order_progress SET ack_at = ${now(day)} WHERE workspace_id = ${day.id} AND order_ref = ${c.ref} AND ack_at IS NULL RETURNING 1`;
     if (!row) return;
     await appendEvent(tx, day.id, now(day), { type: "store.acknowledged", role: who.role, ref: c.ref, text: `${o.outlet_id} acknowledged the deferral${c.via === "whatsapp" ? " on WhatsApp" : ""}`, payload: { via: c.via } });
@@ -287,12 +292,12 @@ const handlers: Handlers = {
   },
 
   async reportDelay(tx, day, c, who) {
-    await recordDelay(tx, day, c, who.role, false);
+    await recordDelay(tx, day, vehicleOf(day, who), c, who.role, false);
   },
 
   async planDelay(tx, day, c, who) {
     const at = now(day);
-    const vid = day.meta.personas.driver.vehicle_id;
+    const vid = c.vehicle_id ?? (await heldUpVehicle(tx, day));
     const run = await tx<(Order & { stage: string })[]>`
       SELECT o.order_ref, o.depot, o.temp_requirement, t.parking_constraint FROM orders o JOIN outlets t USING (outlet_id)
       JOIN assignments a USING (workspace_id, order_ref) WHERE o.workspace_id = ${day.id} AND a.vehicle_id = ${vid} AND a.decision = 'served'`;
@@ -311,13 +316,15 @@ const handlers: Handlers = {
                  deferred_en_route = CASE WHEN ${choice} = 'defer' THEN 'road' ELSE deferred_en_route END
                WHERE workspace_id = ${day.id} AND order_ref = ${ref} AND stage NOT IN ('delivered', 'received')`;
     }
-    await tx`UPDATE events SET open = false WHERE workspace_id = ${day.id} AND type = 'driver.delay_reported'`;
+    await tx`UPDATE events SET open = false WHERE workspace_id = ${day.id} AND type = 'driver.delay_reported' AND coalesce(payload->>'vehicle_id', ${vid}) = ${vid}`;
+    await tx`UPDATE driver_status SET delay = delay || ${tx.json({ toldAt: at } as never)} WHERE workspace_id = ${day.id} AND vehicle_id = ${vid} AND delay IS NOT NULL`;
     await tx`UPDATE workspaces SET delay_told_at = ${at}, plan_version = plan_version + 1, plan_changed_at = ${at} WHERE id = ${day.id}`;
-    await appendEvent(tx, day.id, at, { type: "delay.planned", role: who.role, kind: "decision", text: c.summary, payload: { plan: c.plan, moveTo: c.moveTo ?? null } });
+    await appendEvent(tx, day.id, at, { type: "delay.planned", role: who.role, kind: "decision", text: c.summary, payload: { vehicle_id: vid, plan: c.plan, moveTo: c.moveTo ?? null } });
   },
 
   async storeReply(tx, day, c, who) {
     const o = await orderOf(tx, day, c.ref);
+    ownStore(who, o);
     const at = now(day);
     const [row] = await tx`UPDATE order_progress SET store_reply = ${tx.json({ reply: c.reply, at } as never)},
                              deferred_en_route = CASE WHEN ${c.reply} = 'tomorrow' THEN 'store' ELSE deferred_en_route END
@@ -375,8 +382,8 @@ async function dropEmptyTrips(tx: Tx, day: Day) {
  * A delay report from the driver. With data signal it arrives through the app; without, as an SMS to the
  * gateway, which also carries the deliveries still saved on the phone (so no delivered stop is reported late).
  */
-export async function recordDelay(tx: Tx, day: Day, c: { reason: string; minutes: number; near: string; label: string; smsDone?: { ref: string; at: string }[] }, role: Account["role"], viaSms: boolean) {
-  const vid = day.meta.personas.driver.vehicle_id;
+export async function recordDelay(tx: Tx, day: Day, vid: string, c: { reason: string; minutes: number; near: string; label: string; smsDone?: { ref: string; at: string }[] }, role: Account["role"], viaSms: boolean) {
+  await ensureStatus(tx, day.id, vid);
   const at = now(day);
   const smsDone = viaSms ? c.smsDone ?? [] : [];
   const delay = { at, reason: c.reason, minutes: c.minutes, via: viaSms ? "sms" : "app", near: c.near, smsDone };
@@ -389,7 +396,7 @@ export async function recordDelay(tx: Tx, day: Day, c: { reason: string; minutes
     kind: "issue",
     open: true,
     text: `${viaSms ? "SMS from" : "Report from"} ${vid}: ${c.label.toLowerCase()} near ${c.near}, about ${c.minutes} min delay.${also} Decide the remaining stops.`,
-    payload: delay,
+    payload: { ...delay, vehicle_id: vid },
   });
 }
 
@@ -397,8 +404,8 @@ export async function recordDelay(tx: Tx, day: Day, c: { reason: string; minutes
  * The phone is back in contact. Records it sent while offline have already been applied by /sync.
  * Work out which of its stops the dispatcher changed meanwhile, so the driver is told on screen.
  */
-export async function reconnect(tx: Tx, day: Day, delivered: number, arrived: number) {
-  const vid = day.meta.personas.driver.vehicle_id;
+export async function reconnect(tx: Tx, day: Day, vid: string, delivered: number, arrived: number) {
+  await ensureStatus(tx, day.id, vid);
   const conflicts = await tx<{ ref: string; to: string }[]>`
     SELECT p.order_ref AS ref, coalesce(p.reassigned_to, 'depot') AS "to" FROM order_progress p JOIN assignments a USING (workspace_id, order_ref)
     WHERE p.workspace_id = ${day.id} AND a.vehicle_id = ${vid} AND (p.reassigned_to IS NOT NULL OR p.deferred_en_route IS NOT NULL)
@@ -408,6 +415,19 @@ export async function reconnect(tx: Tx, day: Day, delivered: number, arrived: nu
              last_sync = ${tx.json({ at, count: delivered + arrived, delivered, arrived } as never)}
            WHERE workspace_id = ${day.id} AND vehicle_id = ${vid}`;
   return conflicts;
+}
+
+/** A store manager acts for their own store (or their district's stores). The seeded demo account may act for any store. */
+function ownStore(who: Account, outlet: { outlet_id?: string; district?: string } | undefined) {
+  if (who.role === "store" && !coversStore(who, outlet ?? {})) throw new HttpError(403, "That order belongs to another store.");
+}
+
+/** The vehicle whose driver reported the delay being decided (the oldest one still waiting), else the demo run. */
+async function heldUpVehicle(tx: Tx, day: Day): Promise<string> {
+  const [r] = await tx<{ vehicle_id: string }[]>`
+    SELECT vehicle_id FROM driver_status WHERE workspace_id = ${day.id} AND delay IS NOT NULL AND NOT (delay ? 'toldAt')
+    ORDER BY delay->>'at', vehicle_id LIMIT 1`;
+  return r?.vehicle_id ?? day.meta.personas.driver.vehicle_id;
 }
 
 export async function runCommand(dayId: string, cmd: Command, who: Account) {

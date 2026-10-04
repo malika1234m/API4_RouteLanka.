@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { OutletPicker, useOutlet } from "@/components/OutletPicker";
 import { Shell } from "@/components/Shell";
+import { WhatsAppConnect } from "@/components/WhatsAppConnect";
 import { Rich } from "@/components/ui";
 import { api } from "@/lib/api";
 import { renderMessage, useT } from "@/lib/i18n";
@@ -39,6 +40,8 @@ export default function Messages() {
   const { t, lang } = useT("store");
   const [outletId, setOutlet] = useOutlet();
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  // Bumped when WhatsApp is connected or disconnected, so the confirmation shows in the thread.
+  const [reload, setReload] = useState(0);
 
   // Walkthrough links open a specific outlet's thread.
   useEffect(() => {
@@ -53,13 +56,16 @@ export default function Messages() {
     let cancelled = false;
     const load = () => api<Msg[]>(`/messages?outlet=${outletId}`).then((m) => !cancelled && setMsgs(m)).catch(() => {});
     void load();
-    // The notifier works asynchronously: look again shortly after an event.
+    // The notifier writes messages a moment after the event that causes them (it has its own queue), so look
+    // again shortly after, and keep looking every few seconds while the page is open and visible.
     const again = setTimeout(load, 800);
+    const poll = setInterval(() => document.visibilityState === "visible" && void load(), 3000);
     return () => {
       cancelled = true;
       clearTimeout(again);
+      clearInterval(poll);
     };
-  }, [outletId, latest, s.published]);
+  }, [outletId, latest, s.published, reload]);
 
   const outlet = outletById.get(outletId);
 
@@ -70,6 +76,8 @@ export default function Messages() {
         <OutletPicker id={outletId} onChange={setOutlet} />
       </div>
       <p className="mt-1 text-sm text-mute">{t("Messages are sent in the store's chosen language. No app to install: outlet staff change often.")}</p>
+
+      <WhatsAppConnect outlet={outletId} onConnected={() => setReload((n) => n + 1)} />
 
       <div className="mx-auto mt-4 max-w-md overflow-hidden rounded-2xl border border-line shadow-sm">
         <div className="flex items-center gap-3 bg-[#075e54] px-4 py-3 text-white">

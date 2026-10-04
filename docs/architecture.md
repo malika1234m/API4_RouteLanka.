@@ -13,7 +13,7 @@ flowchart LR
   end
 
   subgraph Core["API service (Fastify, TypeScript)"]
-    AUTH["Auth: seeded accounts,<br/>JWT cookie, role guard"]
+    AUTH["Auth: staff accounts,<br/>JWT cookie, role and scope guard"]
     CMD["Command handlers<br/>(validate with the shared rules)"]
     QRY["Query / view model"]
     SSE["Realtime: server-sent events"]
@@ -56,6 +56,90 @@ flowchart LR
 | **PostgreSQL** | The shared record. | |
 | **RabbitMQ** | Carries commands to workers and fans events out to every consumer. | Decouples the roles: the loader's flag reaches the dispatcher, the notifier and every open screen without the API calling each of them. |
 
+## The night, end to end
+
+Planning, loading, delivery and receipt happen in a fixed order, and the API enforces it: a trip can be marked
+ready only when every order is loaded, and a driver can record a stop only after the loader has released the truck.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor D as Dispatcher
+  participant API as API + PostgreSQL
+  participant E as Planning engine
+  actor L as Loader
+  actor R as Driver (phone)
+  actor S as Store (app or WhatsApp)
+  D->>API: Re-plan
+  API->>E: plan.propose (RabbitMQ)
+  E-->>API: allocation, deferrals with reasons, stop order, ETAs
+  D->>API: Publish plan
+  API-->>S: arrival window and handover code (deferred stores: why, and the next run)
+  API-->>R: run downloads to the phone (works without signal from here)
+  L->>API: load each order, flag shortfalls
+  D->>API: decide a shortfall (send short / hold / defer the rest)
+  L->>API: Mark ready, then Release
+  Note over API,R: stops unlock only after release
+  R->>API: arrived, delivered + handover code (synced later if offline)
+  R-->>D: delay report (by SMS without data)
+  D->>API: delay plan for that vehicle's stops
+  API-->>S: new time, with reply buttons
+  S->>API: confirm receipt or report a problem
+```
+
+## Who can do what
+
+Every request names the role it acts as, and the API checks it against the accounts signed in on that session.
+Each account is also tied to the work it covers, and the API checks that scope on every read and command.
+
+| Role | Tied to | Can see and do |
+|---|---|---|
+| Dispatcher | a depot | the whole plan; publish, move, defer, decide shortfalls and delays; manage the team |
+| Loader | a depot | the dock queue; load, flag, mark ready, release |
+| Driver | one vehicle (one driver per vehicle) | that vehicle's run only; arrivals, deliveries, delay reports |
+| Store manager | one store, or every store in a district (area manager) | those stores' deliveries, handover codes, messages, orders and WhatsApp connection |
+
+Accounts are managed on the dispatcher's *Team* screen (`apps/api/src/team.ts`). A deactivated account stops
+working on its next request, because the API reloads the account each time instead of trusting the session alone.
+
+## Deployment
+
+`docker compose up` starts everything below. The seed job runs the migrations and loads the datasets, then exits;
+the other services wait for it.
+
+```mermaid
+flowchart TB
+  user(["Browsers and phones"])
+  subgraph host["Docker Compose"]
+    web["web · Next.js<br/>:3000"]
+    api["api · Fastify<br/>:4000"]
+    engine["engine · Python worker"]
+    notifier["notifier · Node worker"]
+    seed["seed · one-shot<br/>migrations + datasets"]
+    wasim["wa-sim · Cloud API simulator<br/>:3200"]
+    pg[("postgres 16<br/>volume pgdata")]
+    mq{{"rabbitmq 3.13<br/>:5672, console :15672"}}
+  end
+  data[/"./data (datasets, read-only)"/]
+  meta["Meta WhatsApp Cloud API<br/>(when WHATSAPP_MODE=cloud)"]
+
+  user --> web
+  web -- "/api/* proxied" --> api
+  web -- "/wa-sim proxied" --> wasim
+  api --> pg
+  api <--> mq
+  engine <--> mq
+  engine --> pg
+  notifier <--> mq
+  notifier --> pg
+  notifier -- "send" --> wasim
+  notifier -. "send" .-> meta
+  wasim -- "signed webhooks" --> api
+  meta -. "signed webhooks" .-> api
+  seed --> pg
+  data --> seed
+```
+
 ## How a decision travels (example: the loader flags missing crates)
 
 1. The loader's tablet sends `POST /api/commands {type: "loadFlag"}`.
@@ -84,5 +168,5 @@ flowchart LR
 
 Reference data (outlets, vehicles, districts, calendar) is shared. Everything that changes during a
 walkthrough belongs to a **demo day** (`workspaces` table). The seeded demo day is Friday
-24 April 2026. "Start the night again" on the sign-in page creates a fresh demo day for that browser,
+24 April 2026. *Start a new demo day* on the sign-in page creates a fresh demo day for that browser,
 so two judges using the deployed URL at the same time don't change each other's plan.

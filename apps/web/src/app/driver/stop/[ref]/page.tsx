@@ -80,7 +80,13 @@ export default function StopFlow() {
         ))}
       </ol>
 
-      {step === 1 && (
+      {step === 1 && !s.departed[tripKey(o)] && (
+        <Card className="mt-4 border-l-4 border-l-hivis p-4">
+          <p className="text-lg font-semibold">{t("The truck hasn't left the dock yet. This stop opens when the loader releases it.")}</p>
+        </Card>
+      )}
+
+      {step === 1 && s.departed[tripKey(o)] && (
         <Card className="mt-4 p-4">
           <p className="text-lg">{t("Tap when you've parked at the outlet. The time is recorded on this phone.")}</p>
           <Btn variant="primary" size="xl" className="mt-4 w-full" onClick={() => dispatch({ type: "fieldEvent", event: newEvent(o.order_ref, "arrived") })}>

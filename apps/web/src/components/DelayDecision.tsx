@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Btn, Card, Chip, IconCheck, IconChill } from "@/components/ui";
 import { delayedEta, heldUp } from "@/lib/delay";
 import { compatibleSwap } from "@/lib/monitor";
-import { DELAY_REASONS, DISRUPTED, extraMinutes } from "@/lib/roads";
-import { seed, vehicleById } from "@/lib/seed";
+import { DELAY_REASONS, disrupted, extraMinutes } from "@/lib/roads";
+import { runFor, runKey } from "@/lib/runs";
+import { vehicleById } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
 import type { Order } from "@/lib/types";
 
@@ -14,6 +15,7 @@ const IDLE_L_PER_H = 3; // assumption: a refrigerated truck idling with the unit
 
 /** Monsoon early warning: which districts' roads are disrupted today, from road_conditions.csv. */
 export function RoadBanner({ compact = false }: { compact?: boolean }) {
+  const DISRUPTED = disrupted();
   if (!DISRUPTED.length) return null;
   const ex = DISRUPTED.map(([, v]) => extraMinutes(v) - extraMinutes(100));
   return (
@@ -24,12 +26,17 @@ export function RoadBanner({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** The dispatcher's recovery card when a driver reports a delay: every remaining stop, re-timed, with a choice and its consequence. */
-export function DelayDecision() {
+/**
+ * The dispatcher's recovery card when a driver reports a delay: every remaining stop, re-timed, with a
+ * choice and its consequence. Without `vid` it shows the run whose delay has waited longest for a decision.
+ */
+export function DelayDecision({ vid: forVid }: { vid?: string }) {
   const { s, dispatch } = useDemo();
-  const d = s.driver.delay;
-  const vid = seed.personas.driver.vehicle_id;
-  const orders = s.orders.filter((o) => heldUp(s, o) || s.delayPlan[o.order_ref]).sort((a, b) => (a.stop_seq ?? 0) - (b.stop_seq ?? 0));
+  const runs = s.drivers.map((r) => runFor(s, runKey(r))!).filter((r) => r.delay);
+  const run = forVid ? runs.find((r) => r.vehicle_id === forVid) : ([...runs].sort((a, b) => Number(!!a.delay!.toldAt) - Number(!!b.delay!.toldAt) || a.delay!.at.localeCompare(b.delay!.at))[0]);
+  const d = run?.delay;
+  const vid = run?.vehicle_id ?? "";
+  const orders = s.orders.filter((o) => o.vehicle_id === vid && (heldUp(s, o) || s.delayPlan[o.order_ref])).sort((a, b) => (a.stop_seq ?? 0) - (b.stop_seq ?? 0));
   const pending = orders.filter((o) => heldUp(s, o) && !s.states[o.order_ref].deferredEnRoute);
   const swap = (o: Order) => compatibleSwap(o, vid);
   const last = pending[pending.length - 1];
@@ -43,13 +50,13 @@ export function DelayDecision() {
     return "late";
   };
   const [choice, setChoice] = useState<Record<string, Choice>>({});
-  if (!d) return null;
+  if (!d || !run) return null;
   const pick = (o: Order) => choice[o.order_ref] ?? suggest(o);
   const v = vehicleById.get(vid)!;
   const fuelLeft = Math.max(v.weekly_fuel_quota_l - v.fuel_used_l, 0);
   const idle = (IDLE_L_PER_H * d.minutes) / 60;
   const reason = DELAY_REASONS.find((r) => r.id === d.reason)?.label ?? d.reason;
-  const told = !!s.delayToldAt;
+  const told = !!d.toldAt;
 
   const confirm = () => {
     const plan: Record<string, Choice> = {};
@@ -62,7 +69,7 @@ export function DelayDecision() {
       const eta = delayedEta(s, o);
       parts.push(c === "late" ? `${o.outlet_id} late (${eta?.from}–${eta?.to})` : c === "move" ? `${o.outlet_id} moved to ${swap(o)}` : `${o.outlet_id} back to the depot, first tomorrow`);
     }
-    dispatch({ type: "planDelay", plan, moveTo, summary: `${vid} delay plan: ${parts.join(", ")}. Stores told on WhatsApp${s.driver.online ? "; driver updated" : "; the driver sees it when signal returns"}.` });
+    dispatch({ type: "planDelay", vehicle_id: vid, plan, moveTo, summary: `${vid} delay plan: ${parts.join(", ")}. Stores told on WhatsApp${run.online ? "; driver updated" : "; the driver sees it when signal returns"}.` });
   };
 
   return (
@@ -74,7 +81,7 @@ export function DelayDecision() {
         {vid} held up: {reason.toLowerCase()} near {d.near}, about {d.minutes} min
       </p>
       <p className="text-sm text-mute">
-        {s.driver.online ? "The driver is in contact." : `No data signal since ${s.driver.offlineSince}; decisions reach the phone when it reconnects.`} Chilled goods stay cold while the engine runs: about {idle.toFixed(1)} L extra fuel ({fuelLeft.toFixed(0)} L left this week).
+        {run.online ? `${run.name ?? "The driver"} is in contact.` : `No data signal since ${run.offlineSince}; decisions reach the phone when it reconnects.`} Chilled goods stay cold while the engine runs: about {idle.toFixed(1)} L extra fuel ({fuelLeft.toFixed(0)} L left this week).
       </p>
 
       {!!d.smsDone?.length && (
@@ -141,7 +148,7 @@ export function DelayDecision() {
         </>
       ) : (
         <p className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-ok">
-          <IconCheck /> Stores told on WhatsApp at {s.delayToldAt}
+          <IconCheck /> Stores told on WhatsApp at {d.toldAt}
         </p>
       )}
       {!told && <Chip tone="hivis" className="mt-2">Late deliveries will be tagged “road disruption”, not the driver</Chip>}

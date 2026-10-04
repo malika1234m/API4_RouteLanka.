@@ -93,6 +93,25 @@ sequenceDiagram
 6. Automated: `python tests/e2e/whatsapp.py` runs all of the above, plus a validly signed attempt to confirm
    another store's order, which is refused.
 
+## Stores connect their own number
+
+A store manager opens **Messages → Connect WhatsApp** (or *Change number*). The app shows a one-time message,
+`JOIN OUT034 482193`, as a QR code and a `wa.me` link. Scanning it on the store's phone opens WhatsApp with the
+message ready; the manager presses send.
+
+* **The phone that sends it is the phone that gets the updates.** Nobody types a number, so there is no number to
+  mistype and nothing else to verify: the message came from that phone, through Meta's signed webhook.
+* **It is the store's opt-in.** The store wrote first, which WhatsApp requires before a business may message
+  someone, and it opens the 24-hour window, so the confirmation goes as free-form text.
+* **Guarded.** A code belongs to one store, works for 30 minutes, is used once, and is void after 5 wrong tries.
+  A phone already serving one store can't join another. Only that store's manager (or its district's area
+  manager) can ask for a code.
+* **Turning it off.** *Disconnect* in the app, or **STOP** from the phone. Updates keep showing in the app.
+
+In the simulator the link opens `/wa-sim/?text=JOIN…`, which asks which phone is sending (on a real phone that's
+simply your phone) and opens the chat with the message ready. Set `WHATSAPP_BUSINESS_NUMBER` to your business
+number for the `wa.me` link. Numbers set in `WHATSAPP_LIVE_NUMBERS` still work, for stores set up centrally.
+
 ## Going live on Meta
 
 1. In Meta for Developers, create an app with the **WhatsApp** product. Note the *phone number ID*, create a
@@ -119,5 +138,6 @@ sequenceDiagram
 * The simulator is not Meta. It reproduces the parts RouteLanka depends on (the send endpoint and its
   validation, template and window rules, status and reply webhooks with signatures and retries), not WhatsApp's
   network, rate limits, pricing or business verification.
-* Demo outlets have demo numbers (+94 77 000 0NNN). Real numbers need each store's opt-in.
+* Demo outlets start with demo numbers (+94 77 000 0NNN). A store replaces it with its own phone through
+  *Connect WhatsApp*, which is also its opt-in.
 * Sinhala and Tamil texts are AI-drafted and need a native speaker's review before a pilot.

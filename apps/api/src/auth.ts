@@ -18,7 +18,50 @@ export interface Account {
   role: Role;
   name: string;
   username: string;
+  /** The work this person covers, from their account: a depot, a store, or a vehicle (and trip). */
+  depot?: string;
+  outlet_id?: string;
+  /** A store manager for every store in this district (an area manager). */
+  district?: string;
+  vehicle_id?: string;
+  trip_id?: number;
+  /** One of the four seeded walkthrough accounts. */
+  demo?: boolean;
 }
+
+/**
+ * Whether a store account acts for this store: its own store, any store in its district, or (the seeded
+ * walkthrough account only) any store at all.
+ */
+export const coversStore = (who: Pick<Account, "demo" | "outlet_id" | "district">, outlet: { outlet_id?: string | null; district?: string | null }) =>
+  !!who.demo || (!!who.outlet_id && who.outlet_id === outlet.outlet_id) || (!!who.district && who.district === outlet.district);
+
+interface UserRow {
+  id: string;
+  role: Role;
+  display_name: string;
+  username: string;
+  depot: string | null;
+  outlet_id: string | null;
+  district: string | null;
+  vehicle_id: string | null;
+  trip_id: number | null;
+  is_demo: boolean;
+  active: boolean;
+}
+
+const toAccount = (u: UserRow): Account => ({
+  uid: u.id,
+  role: u.role,
+  name: u.display_name,
+  username: u.username,
+  ...(u.depot ? { depot: u.depot } : {}),
+  ...(u.outlet_id ? { outlet_id: u.outlet_id } : {}),
+  ...(u.district ? { district: u.district } : {}),
+  ...(u.vehicle_id ? { vehicle_id: u.vehicle_id } : {}),
+  ...(u.trip_id ? { trip_id: u.trip_id } : {}),
+  ...(u.is_demo ? { demo: true } : {}),
+});
 
 const key = new TextEncoder().encode(config.sessionSecret);
 const COOKIE = "rl_session";
@@ -30,7 +73,7 @@ export class HttpError extends Error {
   }
 }
 
-async function readSession(req: FastifyRequest): Promise<Account[]> {
+async function readToken(req: FastifyRequest): Promise<Account[]> {
   const token = req.cookies[COOKIE];
   if (!token) return [];
   try {
@@ -41,18 +84,32 @@ async function readSession(req: FastifyRequest): Promise<Account[]> {
   }
 }
 
+/**
+ * The accounts signed in on this session, as they are now: a deactivated account drops out at once, and a
+ * change the dispatcher makes on the Team screen (a new vehicle, another store) applies on the next request.
+ */
+async function readSession(req: FastifyRequest): Promise<Account[]> {
+  const ids = (await readToken(req)).map((a) => a.uid);
+  if (!ids.length) return [];
+  const rows = await sql<UserRow[]>`SELECT id, role, display_name, username, depot, outlet_id, district, vehicle_id, trip_id, is_demo, active
+                                     FROM users WHERE id = ANY(${ids}::uuid[]) AND active`;
+  return rows.map(toAccount);
+}
+
 async function writeSession(reply: FastifyReply, accounts: Account[]) {
   const token = await new SignJWT({ accounts }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("12h").sign(key);
   reply.setCookie(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: config.cookieSecure, path: "/", maxAge: 12 * 3600 });
 }
 
 export async function login(req: FastifyRequest, reply: FastifyReply, username: string, password: string): Promise<Account> {
-  const [u] = await sql<{ id: string; role: Role; display_name: string; username: string; password_hash: string }[]>`
-    SELECT id, role, display_name, username, password_hash FROM users WHERE username = ${username.trim().toLowerCase()}`;
+  const [u] = await sql<(UserRow & { password_hash: string })[]>`
+    SELECT id, role, display_name, username, depot, outlet_id, district, vehicle_id, trip_id, is_demo, active, password_hash
+    FROM users WHERE username = ${username.trim().toLowerCase()}`;
   // Compare even when the user doesn't exist, so response time doesn't reveal valid usernames.
   const ok = await bcrypt.compare(password, u?.password_hash ?? "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinva");
   if (!u || !ok) throw new HttpError(401, "That username and password don't match an account.");
-  const account: Account = { uid: u.id, role: u.role, name: u.display_name, username: u.username };
+  if (!u.active) throw new HttpError(403, "This account has been deactivated. Ask your dispatcher.");
+  const account = toAccount(u);
   const accounts = (await readSession(req)).filter((a) => a.role !== account.role);
   await writeSession(reply, [...accounts, account]);
   return account;

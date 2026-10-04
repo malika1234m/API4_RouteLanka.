@@ -34,6 +34,8 @@ export interface DayMeta {
   day_budget: number;
   monsoon: number;
   personas: Personas;
+  /** Set when the day is a real night from the order history (not the walkthrough night). */
+  history_date?: string;
 }
 
 /** Data that does not change during a day. */
@@ -50,18 +52,35 @@ export interface Reference {
 export interface DriverView {
   vehicle_id: string;
   trip_id: number;
+  /** The driver on this vehicle (from their account). */
+  name?: string;
   online: boolean;
   offlineSince?: string;
   lastContact?: string;
   lastContactStop?: string;
   conflicts: { ref: string; to: string }[];
   lastSync?: { at: string; count: number; delivered: number; arrived: number };
-  delay?: { at: string; reason: DelayReason; minutes: number; via: "sms" | "app"; near: string; smsDone?: { ref: string; at: string }[] };
+  delay?: { at: string; reason: DelayReason; minutes: number; via: "sms" | "app"; near: string; smsDone?: { ref: string; at: string }[]; toldAt?: string };
+}
+
+/** A person signed in on this browser, and the work their account covers. */
+export interface Person {
+  name: string;
+  username: string;
+  depot?: string;
+  outlet_id?: string;
+  /** An area manager: every store in this district. */
+  district?: string;
+  vehicle_id?: string;
+  trip_id?: number;
+  /** One of the four seeded walkthrough accounts. */
+  demo?: boolean;
 }
 
 /** Everything a screen needs about the current demo day. Rebuilt by the API from the database. */
 export interface DayView {
-  day: { id: string; name: string; service_date: string; clock_start: number; clock_speed: number; meta: DayMeta };
+  /** `next_runs`: the next two operating nights after this one (where a deferred or newly placed order goes). */
+  day: { id: string; name: string; service_date: string; clock_start: number; clock_speed: number; meta: DayMeta; next_runs: string[] };
   published: boolean;
   planVersion: number;
   planChangedAt?: string;
@@ -72,7 +91,12 @@ export interface DayView {
   ready: Record<string, boolean>;
   departed: Record<string, string>;
   feed: FeedItem[];
+  /** The run of the driver signed in on this browser (the demo run when no driver is signed in). */
   driver: DriverView;
+  /** Every run with a driver's phone on it: one per active driver account. */
+  drivers: DriverView[];
+  /** The people signed in on this browser, one per role. */
+  me: Partial<Record<Role, Person>>;
   delayPlan: Record<string, "late" | "move" | "defer">;
   delayToldAt?: string;
   storeReplies: Record<string, { reply: "wait" | "tomorrow"; at: string }>;
@@ -110,7 +134,7 @@ export type Command =
   | { type: "repair"; vehicle_id: string; note: string }
   | { type: "hire"; district: string; m3: number; cost: number; note: string }
   | { type: "reportDelay"; reason: DelayReason; minutes: number; near: string; label: string }
-  | { type: "planDelay"; plan: Record<string, "late" | "move" | "defer">; moveTo?: string; summary: string }
+  | { type: "planDelay"; vehicle_id?: string; plan: Record<string, "late" | "move" | "defer">; moveTo?: string; summary: string }
   | { type: "storeReply"; ref: string; reply: "wait" | "tomorrow" };
 
 export type CommandType = Command["type"];

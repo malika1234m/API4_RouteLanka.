@@ -102,6 +102,11 @@ async def main():
         d = v["driver"]
         run = sorted([o for o in v["orders"] if o.get("vehicle_id") == d["vehicle_id"] and o.get("trip_id") == d["trip_id"]], key=lambda o: o["stop_seq"])
         first = run[0]
+        # Load, release, deliver: the loader loads and releases the truck before the driver's stops open.
+        for o in run:
+            assert (await ctx.request.post(BASE + "/api/commands", data={"type": "loadTick", "ref": o["order_ref"]}, headers={"x-rl-role": "loader"})).ok
+        for c in ("ready", "depart"):
+            assert (await ctx.request.post(BASE + "/api/commands", data={"type": c, "key": f"{d['vehicle_id']}#{d['trip_id']}"}, headers={"x-rl-role": "loader"})).ok
         code = (await view(ctx, "store"))["codes"][first["order_ref"]]
         drv = await ctx.new_page()
         watch(drv, "driver")

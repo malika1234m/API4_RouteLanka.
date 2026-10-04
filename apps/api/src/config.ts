@@ -25,6 +25,8 @@ export const config = {
   whatsappVerifyToken: env("WHATSAPP_VERIFY_TOKEN", "dev-wa-verify-token"),
   whatsappApiBase: env("WHATSAPP_API_BASE", "http://wa-sim:3200"),
   whatsappPhoneNumberId: env("WHATSAPP_PHONE_NUMBER_ID", "100000000000001"),
+  /** The business's WhatsApp number as people dial it (digits only): stores send their JOIN message here. */
+  whatsappBusinessNumber: env("WHATSAPP_BUSINESS_NUMBER", "94110000000"),
   /** Where links in messages point (the report screen). */
   publicUrl: env("PUBLIC_URL", "http://localhost:3000"),
   instanceId: env("HOSTNAME", `api-${process.pid}`),

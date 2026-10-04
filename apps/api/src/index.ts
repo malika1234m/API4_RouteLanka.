@@ -8,7 +8,8 @@ import { startRelay } from "./relay";
 const app = buildApp();
 
 async function main() {
-  await app.listen({ port: config.port, host: "0.0.0.0" });
+  // "::" accepts IPv6 and IPv4: private networks such as Railway's reach services over IPv6.
+  await app.listen({ port: config.port, host: "::" });
   // Workers start after the port is open, so health checks answer while RabbitMQ is still connecting.
   void startWorkers();
 }

@@ -34,7 +34,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("repair"), vehicle_id: z.string(), note: z.string().max(500) }),
   z.object({ type: z.literal("hire"), district: z.string(), m3: z.number().min(0), cost: z.number().min(0), note: z.string().max(500) }),
   z.object({ type: z.literal("reportDelay"), reason: delayReason, minutes: z.number().int().min(5).max(600), near: z.string().max(120), label: z.string().max(80) }),
-  z.object({ type: z.literal("planDelay"), plan: z.record(ref, z.enum(["late", "move", "defer"])), moveTo: z.string().optional(), summary: z.string().max(1000) }),
+  z.object({ type: z.literal("planDelay"), vehicle_id: z.string().max(20).optional(), plan: z.record(ref, z.enum(["late", "move", "defer"])), moveTo: z.string().optional(), summary: z.string().max(1000) }),
   z.object({ type: z.literal("storeReply"), ref, reply: z.enum(["wait", "tomorrow"]) }),
 ]);
 
@@ -55,5 +55,6 @@ export const syncSchema = z.object({
     .max(200),
 });
 
+export const daySchema = z.object({ night: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date (YYYY-MM-DD).").optional() });
 export const loginSchema = z.object({ username: z.string().min(1).max(60), password: z.string().min(1).max(200) });
 export const smsSchema = z.object({ token: z.string(), from: z.string().max(30).optional(), body: z.string().max(480) });

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DepotToggle } from "@/components/DepotToggle";
+import { dateLabel } from "@routelanka/domain";
 import { Shell } from "@/components/Shell";
 import { BtnLink, Card, Chip, Meter, OrderMarks } from "@/components/ui";
 import { seed } from "@/lib/seed";
@@ -74,7 +75,7 @@ export default function OrderQueue() {
     <Shell role="dispatcher" width="wide">
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
-          <h1 className="font-cond text-2xl font-bold leading-tight">Orders for Friday&apos;s run</h1>
+          <h1 className="font-cond text-2xl font-bold leading-tight">Orders for {dateLabel("en", s.day.service_date, "weekday")}&apos;s run</h1>
           <p className="text-sm text-mute">Closed at 16:00. Every confirmed order is in one queue, so nothing is re-typed.</p>
         </div>
         <DepotToggle depot={depot} onChange={setDepot} />

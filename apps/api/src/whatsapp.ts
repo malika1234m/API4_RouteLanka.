@@ -9,10 +9,11 @@
  * A tap on a reply button carries the command the app would send (see encodeReply in the domain package), so a
  * WhatsApp reply goes through the same handler, rules and events as a tap in the app.
  */
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { decodeReply, renderMessage, STATUS_RANK, tappedId, templateCatalogue, WA_API_VERSION, type WaWebhook } from "@routelanka/domain";
-import { actor, type Account } from "./auth";
+import { decodeReply, formatPhone, isStop, joinText, parseJoin, renderMessage, STATUS_RANK, tappedId, templateCatalogue, WA_API_VERSION, waMeLink, type WaWebhook } from "@routelanka/domain";
+import { z } from "zod";
+import { actor, coversStore, HttpError, type Account } from "./auth";
 import { runCommand } from "./commands";
 import { config } from "./config";
 import { sql } from "./db";
@@ -35,11 +36,66 @@ async function reply(workspace: string, outlet: string, orderRef: string | null,
                    to_char(now() AT TIME ZONE 'Asia/Colombo', 'HH24:MI'), ${config.whatsappMode === "off" ? "local" : "pending"}`;
 }
 
+/** A note in the store's messages that is shown in the app only (nothing is sent). */
+async function notice(workspace: string, outlet: string, template: string, vars: Record<string, string> = {}) {
+  await sql`INSERT INTO messages (workspace_id, source_event, channel, outlet_id, direction, template, vars, day, at, wa_status)
+            VALUES (${workspace}, ${randomUUID()}, 'whatsapp', ${outlet}, 'in', ${template}, ${sql.json(vars)}, 'Today',
+                    to_char(now() AT TIME ZONE 'Asia/Colombo', 'HH24:MI'), 'local')`;
+}
+
+/** The demo day a store's WhatsApp traffic belongs to: its latest message's, else the default day. */
+async function storeDay(outlet: string): Promise<string | undefined> {
+  const [r] = await sql<{ id: string }[]>`
+    (SELECT workspace_id AS id FROM messages WHERE outlet_id = ${outlet} ORDER BY created_at DESC LIMIT 1)
+    UNION ALL (SELECT id FROM workspaces WHERE is_default) LIMIT 1`;
+  return r?.id;
+}
+
+const JOIN_MINUTES = 30;
+const JOIN_MAX_WRONG = 5;
+
+/**
+ * "JOIN OUT034 482193" from a phone: link that phone to the store if the code is the store's open one. The
+ * store sent it from its own phone, so the number is verified and this is its opt-in.
+ */
+async function connectByJoin(phone: string, join: { outlet: string; code: string }): Promise<string> {
+  return sql.begin(async (tx) => {
+    const [c] = await tx<{ code: string; created_by: string | null; workspace_id: string | null; expired: boolean; attempts: number }[]>`
+      SELECT code, created_by, workspace_id, expires_at < now() AS expired, attempts FROM wa_join_codes WHERE outlet_id = ${join.outlet} FOR UPDATE`;
+    if (!c || c.expired) return `JOIN for ${join.outlet} from ${phone}: no open code (expired or never asked for); ignored`;
+    if (c.code !== join.code) {
+      // A few wrong guesses and the code is void: the store asks for a new one.
+      if (c.attempts + 1 >= JOIN_MAX_WRONG) await tx`DELETE FROM wa_join_codes WHERE outlet_id = ${join.outlet}`;
+      else await tx`UPDATE wa_join_codes SET attempts = attempts + 1 WHERE outlet_id = ${join.outlet}`;
+      return `JOIN for ${join.outlet} from ${phone}: wrong code; refused`;
+    }
+    const [other] = await tx<{ outlet_id: string }[]>`SELECT outlet_id FROM outlet_contacts WHERE phone = ${phone} AND outlet_id <> ${join.outlet}`;
+    if (other) return `JOIN for ${join.outlet} from ${phone}: that number is already connected to ${other.outlet_id}; refused`;
+    await tx`DELETE FROM wa_join_codes WHERE outlet_id = ${join.outlet}`;
+    await tx`INSERT INTO outlet_contacts (outlet_id, phone, live, opted_in_at, last_inbound_at, source, connected_by)
+             VALUES (${join.outlet}, ${phone}, true, now(), now(), 'join', ${c.created_by})
+             ON CONFLICT (outlet_id) DO UPDATE SET phone = EXCLUDED.phone, live = true, opted_in_at = now(), last_inbound_at = now(),
+                                                   source = 'join', connected_by = EXCLUDED.connected_by`;
+    const day = c.workspace_id ?? (await storeDay(join.outlet));
+    // Inside the 24-hour window (the store just wrote), so the confirmation goes as free-form text.
+    if (day)
+      await tx`INSERT INTO messages (workspace_id, source_event, channel, outlet_id, direction, template, vars, day, at, wa_status)
+               VALUES (${day}, ${randomUUID()}, 'whatsapp', ${join.outlet}, 'in',
+                       ${"✅ WhatsApp connected. Delivery updates for {o} now come to this number. Send STOP to turn them off."},
+                       ${tx.json({ o: join.outlet })}, 'Today', to_char(now() AT TIME ZONE 'Asia/Colombo', 'HH24:MI'),
+                       ${config.whatsappMode === "off" ? "local" : "pending"})`;
+    return `${join.outlet} connected WhatsApp ${phone} (JOIN with a valid code)`;
+  });
+}
+
 /** The store account a WhatsApp reply acts as: the outlet's own, or the store role's (the demo has one per role). */
 async function storeAccount(outlet: string): Promise<Account> {
   const [u] = await sql<{ id: string; username: string; display_name: string }[]>`
-    SELECT id, username, display_name FROM users WHERE role = 'store' ORDER BY (outlet_id = ${outlet}) DESC, created_at LIMIT 1`;
-  return { uid: u.id, role: "store", name: u.display_name, username: u.username };
+    SELECT id, username, display_name FROM users WHERE role = 'store' AND active
+    ORDER BY (outlet_id = ${outlet}) DESC, (district = (SELECT district FROM outlets WHERE outlet_id = ${outlet})) DESC, created_at LIMIT 1`;
+  // The message came from that outlet's own WhatsApp number, so it acts for that outlet.
+  const [o] = await sql<{ district: string }[]>`SELECT district FROM outlets WHERE outlet_id = ${outlet}`;
+  return { uid: u.id, role: "store", name: u.display_name, username: u.username, outlet_id: outlet, district: o?.district };
 }
 
 async function handle(body: WaWebhook): Promise<string[]> {
@@ -61,6 +117,12 @@ async function handle(body: WaWebhook): Promise<string[]> {
         notes.push(`duplicate ${m.id}: already applied`);
         continue;
       }
+      const text = m.type === "text" ? (m.text?.body ?? "") : "";
+      const join = parseJoin(text);
+      if (join) {
+        notes.push(await connectByJoin(m.from, join));
+        continue;
+      }
       const [contact] = await sql<{ outlet_id: string }[]>`
         UPDATE outlet_contacts SET last_inbound_at = now() WHERE phone = ${m.from} RETURNING outlet_id`;
       if (!contact) {
@@ -68,6 +130,14 @@ async function handle(body: WaWebhook): Promise<string[]> {
         continue;
       }
       const outlet = contact.outlet_id;
+      if (isStop(text)) {
+        // The store turned WhatsApp off from its phone. Updates keep coming in the app.
+        await sql`DELETE FROM outlet_contacts WHERE outlet_id = ${outlet} AND phone = ${m.from}`;
+        const day = await storeDay(outlet);
+        if (day) await notice(day, outlet, "WhatsApp turned off from {p} (STOP). Updates still show here in the app.", { p: formatPhone(m.from) });
+        notes.push(`${outlet} sent STOP: WhatsApp disconnected`);
+        continue;
+      }
       const id = tappedId(m);
       const action = id ? decodeReply(id) : null;
       if (!action) {
@@ -141,6 +211,56 @@ export function whatsappRoutes(app: FastifyInstance) {
     });
   });
 
+  // ── A store connects its own WhatsApp number ──
+  const outletBody = z.object({ outlet: z.string().regex(/^OUT\d{3}$/) });
+  const storeFor = async (req: Parameters<typeof actor>[0], outlet: string) => {
+    const who = await actor(req, ["store"]);
+    const [o] = await sql<{ district: string }[]>`SELECT district FROM outlets WHERE outlet_id = ${outlet}`;
+    if (!o) throw new HttpError(404, "Unknown store.");
+    if (!coversStore(who, { outlet_id: outlet, district: o.district })) throw new HttpError(403, "That's another store's WhatsApp.");
+    return who;
+  };
+  const connection = async (outlet: string) => {
+    const [[c], [j]] = await Promise.all([
+      sql<{ phone: string; source: string; opted_in_at: Date; by: string | null }[]>`
+        SELECT c.phone, c.source, c.opted_in_at, u.display_name AS by FROM outlet_contacts c LEFT JOIN users u ON u.id = c.connected_by WHERE c.outlet_id = ${outlet}`,
+      sql<{ code: string; expires_at: Date }[]>`SELECT code, expires_at FROM wa_join_codes WHERE outlet_id = ${outlet} AND expires_at > now()`,
+    ]);
+    const text = j ? joinText(outlet, j.code) : null;
+    return {
+      outlet,
+      mode: config.whatsappMode,
+      business: formatPhone(config.whatsappBusinessNumber),
+      connected: c ? { phone: formatPhone(c.phone), number: c.phone, source: c.source, since: c.opted_in_at, by: c.by } : null,
+      pending: j && text ? { text, expires_at: j.expires_at, link: waMeLink(config.whatsappBusinessNumber, text), simulator: `/wa-sim/?text=${encodeURIComponent(text)}` } : null,
+    };
+  };
+  app.get<{ Querystring: { outlet?: string } }>("/api/whatsapp/connection", async (req) => {
+    const { outlet } = outletBody.parse(req.query);
+    await storeFor(req, outlet);
+    return connection(outlet);
+  });
+  app.post("/api/whatsapp/connect", async (req) => {
+    const { outlet } = outletBody.parse(req.body);
+    const who = await storeFor(req, outlet);
+    const day = await currentDay(req);
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    await sql`INSERT INTO wa_join_codes (outlet_id, code, created_by, workspace_id, expires_at)
+              VALUES (${outlet}, ${code}, ${who.uid}, ${day.id}, now() + make_interval(mins => ${JOIN_MINUTES}))
+              ON CONFLICT (outlet_id) DO UPDATE SET code = EXCLUDED.code, created_by = EXCLUDED.created_by, workspace_id = EXCLUDED.workspace_id,
+                                                    expires_at = EXCLUDED.expires_at, attempts = 0`;
+    return connection(outlet);
+  });
+  app.post("/api/whatsapp/disconnect", async (req) => {
+    const { outlet } = outletBody.parse(req.body);
+    const who = await storeFor(req, outlet);
+    const day = await currentDay(req);
+    const [gone] = await sql<{ phone: string }[]>`DELETE FROM outlet_contacts WHERE outlet_id = ${outlet} RETURNING phone`;
+    await sql`DELETE FROM wa_join_codes WHERE outlet_id = ${outlet}`;
+    if (gone) await notice(day.id, outlet, "WhatsApp disconnected by {n}. Updates still show here in the app.", { n: who.name });
+    return connection(outlet);
+  });
+
   // ── The integration console ──
   app.get("/api/whatsapp/console", async (req) => {
     await actor(req, ["dispatcher"]);
@@ -161,7 +281,7 @@ export function whatsappRoutes(app: FastifyInstance) {
            WHERE l.workspace_id = ${day.id} AND l.kind = 'statuses'
            ORDER BY l.id DESC LIMIT 100)
           ORDER BY id DESC`,
-      sql`SELECT outlet_id, phone, live, last_inbound_at FROM outlet_contacts ORDER BY outlet_id`,
+      sql`SELECT outlet_id, phone, live, source, last_inbound_at FROM outlet_contacts ORDER BY outlet_id`,
     ]);
     const timing = await sql<{ to_delivered: number | null; to_read: number | null }[]>`
       SELECT avg(extract(epoch FROM wa_status_at - wa_sent_at)) FILTER (WHERE wa_status IN ('delivered', 'read')) AS to_delivered,

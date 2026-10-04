@@ -11,7 +11,7 @@ const filled = (m: Msg) => [...m.template.matchAll(/\{(\w+)\}/g)].every(([, k]) 
 
 describe("store messages", () => {
   it("a deferred order gets the reason and a one-tap acknowledgement", () => {
-    const [m, ...rest] = published(order({ decision: "deferred", reason: "reefer_capacity" }));
+    const [m, ...rest] = published(order({ decision: "deferred", reason: "reefer_capacity" }), "2026-04-25");
     expect(rest).toHaveLength(0);
     expect(m.template).toContain("not coming");
     expect(m.replies?.[0].command).toEqual({ type: "ack", ref: "K1-035", via: "whatsapp" });
@@ -19,14 +19,14 @@ describe("store messages", () => {
   });
 
   it("a served order gets its window and, separately, its handover code", () => {
-    const [win, code] = published(order());
+    const [win, code] = published(order(), "2026-04-25");
     expect(win.vars?.w).toBe("05:40–06:00");
     expect(code.vars?.c).toBe("2372");
     expect([win, code].every(filled)).toBe(true);
   });
 
   it("a likely-late order is warned before the night starts", () => {
-    const [m] = published(order({ pred_late_prob: 0.7, pred_window: "07:10–07:30" }));
+    const [m] = published(order({ pred_late_prob: 0.7, pred_window: "07:10–07:30" }), "2026-04-25");
     expect(m.template).toContain("after your window closes");
     expect(filled(m)).toBe(true);
   });

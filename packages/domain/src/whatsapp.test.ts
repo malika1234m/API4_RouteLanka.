@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload, decodeReply, encodeReply, templateCatalogue, templateFor, type StoreMessage } from "./whatsapp";
+import { buildPayload, decodeReply, encodeReply, isStop, joinText, parseJoin, templateCatalogue, templateFor, waMeLink, type StoreMessage } from "./whatsapp";
 
 const WS = "8d3b4c2e-1f5a-4b6c-9d7e-0a1b2c3d4e5f";
 const deferral: StoreMessage = {
@@ -86,5 +86,23 @@ describe("template catalogue (what Meta approves)", () => {
       const buttons = (t.components.find((c) => c.type === "BUTTONS") as { buttons: { text: string }[] } | undefined)?.buttons ?? [];
       for (const b of buttons) expect([...b.text].length).toBeLessThanOrEqual(25);
     }
+  });
+});
+
+describe("connecting a store's WhatsApp", () => {
+  it("reads the JOIN message the link fills in, and nothing looser", () => {
+    expect(parseJoin(joinText("OUT034", "048213"))).toEqual({ outlet: "OUT034", code: "048213" });
+    expect(parseJoin("  join out034   048213 ")).toEqual({ outlet: "OUT034", code: "048213" });
+    expect(parseJoin("JOIN OUT034 48213")).toBeNull();
+    expect(parseJoin("JOIN OUT034 048213 please")).toBeNull();
+    expect(parseJoin("hello")).toBeNull();
+  });
+  it("treats STOP as turning WhatsApp off", () => {
+    expect(isStop("stop")).toBe(true);
+    expect(isStop(" STOP ")).toBe(true);
+    expect(isStop("stop the truck")).toBe(false);
+  });
+  it("builds a wa.me link with the message encoded", () => {
+    expect(waMeLink("94110000000", "JOIN OUT034 048213")).toBe("https://wa.me/94110000000?text=JOIN%20OUT034%20048213");
   });
 });

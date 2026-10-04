@@ -9,7 +9,7 @@ RouteLanka connects ordering, planning, loading, delivery and receipt for four r
 
 | | |
 |---|---|
-| Live demo | _to be added_ |
+| Live demo | **https://routelanka-production.up.railway.app** (accounts below) |
 | Demo video | _to be added_ |
 | Designathon submission | tag [`designathon-submitted`](../../tree/designathon-submitted) |
 
@@ -21,9 +21,11 @@ RouteLanka connects ordering, planning, loading, delivery and receipt for four r
 - **Works offline.** The driver's phone keeps working without signal and syncs later. Handover codes are checked on
   the phone.
 - **WhatsApp for stores.** Updates and one-tap replies through the WhatsApp Business Platform, in English, Sinhala
-  or Tamil.
+  or Tamil. Each store connects its own phone by scanning a QR code (*Messages → Connect WhatsApp*).
 - **Capacity outlook.** A 10-week forecast of demand against refrigerated capacity, using our Datathon model.
 - **Fleet and impact.** Repair priorities, hire-or-defer costs and a pilot scorecard.
+- **Team management.** Dispatchers add drivers, loaders, store managers and other dispatchers, and tie each one to
+  their work: a vehicle, a depot or a store. Every person sees only what their account covers.
 
 ## Quick start
 
@@ -48,17 +50,54 @@ Open **http://localhost:3000**. The first start applies the database migrations 
 
 ### Accounts
 
-The password for all four accounts is **`routelanka`**.
+Four seeded accounts, one per role:
 
-| Role | Username | Works on |
-|---|---|---|
-| Dispatcher | `gehiru.dispatch` | Desktop |
-| Loader | `senash.kandydock` | Tablet |
-| Driver | `nimsith.veh041` | Phone |
-| Store manager | `malika.out029` | Phone and WhatsApp |
+| Role | Username | Password | Opens on | Best viewed on |
+|---|---|---|---|---|
+| Dispatcher | `gehiru.dispatch` | `routelanka` | `/dispatch` | Desktop |
+| Loader | `senash.kandydock` | `routelanka` | `/dock` | Phone or tablet |
+| Driver | `nimsith.veh041` | `routelanka` | `/driver` | Phone |
+| Store manager | `malika.out029` | `routelanka` | `/store` | Phone, desktop and WhatsApp |
 
-One browser can stay signed in to all four accounts and switch between them from the header. Phone screens can
+**Area managers.** Each district also has a seeded store manager who covers every store in that district and
+switches between them (password `routelanka` for all):
+
+| District | Username | Name | | District | Username | Name |
+|---|---|---|---|---|---|---|
+| Colombo | `colombo.area` | Dilani Perera | | Kandy | `kandy.area` | Nadeesha Wickramasinghe |
+| Gampaha | `gampaha.area` | Tharushi Fernando | | Matale | `matale.area` | Fathima Rizna |
+| Kalutara | `kalutara.area` | Asanka Silva | | Kegalle | `kegalle.area` | Lahiru Bandara |
+| Galle | `galle.area` | Kasun Wijesinghe | | Nuwara Eliya | `nuwaraeliya.area` | Suresh Kumar |
+| Matara | `matara.area` | Sanduni Gunawardena | | Badulla | `badulla.area` | Chaminda Rathnayake |
+| Kurunegala | `kurunegala.area` | Ishara Herath | | | | |
+| Puttalam | `puttalam.area` | Mohamed Nazeer | | | | |
+
+An area manager sees only their district's stores: deliveries, handover codes, messages and orders. The demo store
+account `malika.out029` can view every store, so judges can look around.
+
+The sign-in page also has one-click *Demo access* buttons for each role. One browser can stay signed in to all four accounts and switch between them from the header. Phone screens can
 also be viewed at **`/preview`**, which shows them in a phone frame.
+
+### Adding staff
+
+Dispatchers manage accounts on **Dispatcher → Team** (`/dispatch/team`):
+
+1. Choose **Add person**, pick the role and enter the person's name.
+2. Tie them to their work: a **vehicle** for a driver, a **store** or a whole **district** for a store manager, a
+   **depot** for a loader or dispatcher. A username is suggested and a temporary password generated.
+3. Give the person the sign-in details shown after saving. The password is shown only once.
+
+| Role | Tied to | What their account covers |
+|---|---|---|
+| Driver | One vehicle (one driver per vehicle) | That vehicle's run: deliveries, offline sync, delay reports by SMS |
+| Store manager | One store, or every store in a district (area manager) | Those stores' deliveries, handover codes, messages and orders |
+| Loader | A depot | Opens on that depot's dock |
+| Dispatcher | A depot | Opens on that depot; manages the team |
+
+From the same screen a dispatcher can rename someone, move them to another vehicle, store or depot, reset their
+password, or deactivate the account, which signs that person out on every device at once. The four demo accounts
+above are kept unchanged so the walkthrough always works. Each new driver appears on *Live runs* and the *Map* with
+their own signal, check-ins and delay reports.
 
 ## Judge walkthrough
 
@@ -90,6 +129,14 @@ About 10 minutes, across all four roles.
     message flow.
 
 Steps 1 to 13 also run automatically: `python tests/e2e/walkthrough.py`.
+
+### Try another night
+
+The walkthrough uses the seeded peak night, Friday 24 April 2026. To see the planner on other real demand, choose
+**Start a new demo day → A night from the order history** on the sign-in page and pick any of the 659 operating
+nights from 1 January 2024 to 14 February 2026. That date's real orders for both depots are loaded (stores skipped
+the night before are must-serve) and the engine plans them before the board opens. Dates, road conditions and store
+messages follow the chosen night. The numbered steps above name orders and vehicles of the walkthrough night.
 
 ## Architecture
 
@@ -144,6 +191,8 @@ Every setting has a working default. See [`.env.example`](.env.example) for the 
 npm test                                  # unit tests: rules, validation, messages, WhatsApp protocol
 cd services/engine && pytest              # engine tests, including the organisers' allocation checker
 python tests/smoke/api_flow.py            # the full night through the API
+python tests/smoke/team_flow.py           # staff accounts: a new driver and store manager working their own scope
+python tests/smoke/whatsapp_connect.py    # a store connects its own WhatsApp number (JOIN code, STOP, disconnect)
 python tests/e2e/walkthrough.py           # the judge walkthrough in a browser
 python tests/e2e/whatsapp.py              # WhatsApp messages, replies and webhook security
 ```
@@ -162,6 +211,7 @@ Further browser tests cover every screen at phone and desktop size (`crawl.py`),
 | Placeholder demand forecast | The Datathon demand model | As the prototype stated |
 | Language saved per session | Language saved on each account | The language follows the person |
 | WhatsApp shown as a mock-up | WhatsApp Business Platform integration with a simulator | A working channel judges can test |
+| One demo person per role | A *Team* screen; each account tied to its vehicle, store or depot | A depot has many drivers and stores, not one |
 
 ## Notes for reviewers
 

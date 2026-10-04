@@ -13,7 +13,7 @@ export interface Msg {
   order_ref: string;
   outlet_id: string;
   template: string;
-  vars?: Record<string, string | number | Tr | null>;
+  vars?: Record<string, string | number | Tr | { $d: string } | null>;
   direction?: "in" | "out";
   day?: "Yesterday" | "Today";
   at?: string;
@@ -41,24 +41,27 @@ const t = (s: string): Tr => ({ $t: s });
 export const unit = (o: Pick<OrderRow, "brand">) => t(o.brand === "Fresh" ? "crates" : "units");
 export const kind = (o: Pick<OrderRow, "temp_requirement">) => t(o.temp_requirement === "chilled" ? "chilled" : "dry goods");
 
-export const received = (o: OrderRow, day: "Yesterday" | "Today", date: string, at: string): Msg => ({
+/** A date shown in the store's language ("2026-04-25" -> "Saturday 25 April"). */
+const date = (iso: string) => ({ $d: iso });
+
+export const received = (o: OrderRow, day: "Yesterday" | "Today", runDate: string, at: string): Msg => ({
   order_ref: o.order_ref,
   outlet_id: o.outlet_id,
   day,
   at,
   template: "We received your order {r} ({n} {u}) for {d}. You'll get the arrival time tonight.",
-  vars: { r: o.order_ref, n: o.order_units, u: unit(o), d: t(date) },
+  vars: { r: o.order_ref, n: o.order_units, u: unit(o), d: date(runDate) },
 });
 
 /** On publish: deferral notice with a reply, or the arrival window and the handover code. */
-export function published(o: OrderRow): Msg[] {
+export function published(o: OrderRow, nextRun: string): Msg[] {
   if (o.decision === "deferred")
     return [
       {
         order_ref: o.order_ref,
         outlet_id: o.outlet_id,
-        template: "Your {k} delivery is **not coming tomorrow morning**. Reason: {r}. It moves to **Saturday 25 April** and you are first in line.",
-        vars: { k: kind(o), r: t(REASON_LABEL[o.reason ?? "dispatcher_choice"].toLowerCase()) },
+        template: "Your {k} delivery is **not coming tomorrow morning**. Reason: {r}. It moves to **{d}** and you are first in line.",
+        vars: { k: kind(o), r: t(REASON_LABEL[o.reason ?? "dispatcher_choice"].toLowerCase()), d: date(nextRun) },
         replies: [{ label: "Noted, thanks", command: { type: "ack", ref: o.order_ref, via: "whatsapp" } }],
       },
     ];

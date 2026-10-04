@@ -75,6 +75,11 @@ const D: Record<string, [string, string]> = {
   "{n} stops": ["නැවතුම් {n}", "{n} நிறுத்தங்கள்"],
   "Your run isn't published yet.": ["ඔබේ ගමන තවම ප්‍රකාශ කර නැත.", "உங்கள் பயணம் இன்னும் வெளியிடப்படவில்லை."],
   "It downloads to this phone as soon as the dispatcher publishes. You won't need signal after that.": ["බෙදාහරින්නා ප්‍රකාශ කළ විගස එය මෙම දුරකථනයට බාගත වේ. ඉන්පසු සංඥා අවශ්‍ය නොවේ.", "அனுப்புநர் வெளியிட்டதும் இது இந்த தொலைபேசியில் பதிவிறங்கும். அதன் பிறகு சிக்னல் தேவையில்லை."],
+  "At the dock": ["ගබඩාවේ", "கிடங்கில்"],
+  "{a} of {b} orders loaded. Your stops open when the loader releases the truck.": ["ඇණවුම් {b} න් {a} ක් පටවා ඇත. පටවන්නා ට්‍රක් රථය නිදහස් කළ විට ඔබේ නැවතුම් විවෘත වේ.", "{b} ஆர்டர்களில் {a} ஏற்றப்பட்டன. ஏற்றுபவர் லாரியை விடுவித்ததும் உங்கள் நிறுத்தங்கள் திறக்கும்."],
+  "Loaded and checked. Waiting for the loader to release the truck.": ["පටවා පරීක්ෂා කර ඇත. පටවන්නා ට්‍රක් රථය නිදහස් කරන තෙක් රැඳී සිටින්න.", "ஏற்றி சரிபார்க்கப்பட்டது. ஏற்றுபவர் லாரியை விடுவிக்கும் வரை காத்திருங்கள்."],
+  "Opens when the truck leaves the dock": ["ට්‍රක් රථය ගබඩාවෙන් පිටත් වූ විට විවෘත වේ", "லாரி கிடங்கிலிருந்து புறப்பட்டதும் திறக்கும்"],
+  "The truck hasn't left the dock yet. This stop opens when the loader releases it.": ["ට්‍රක් රථය තවම ගබඩාවෙන් පිටත් වී නැත. පටවන්නා එය නිදහස් කළ විට මෙම නැවතුම විවෘත වේ.", "லாரி இன்னும் கிடங்கிலிருந்து புறப்படவில்லை. ஏற்றுபவர் அதை விடுவித்ததும் இந்த நிறுத்தம் திறக்கும்."],
   "Loading at the dock. The run is already on your phone.": ["ගබඩාවේ පටවමින් පවතී. ගමන දැනටමත් ඔබේ දුරකථනයේ ඇත.", "கிடங்கில் ஏற்றப்படுகிறது. பயணம் ஏற்கனவே உங்கள் தொலைபேசியில் உள்ளது."],
   "Window {a}–{b}": ["කාලය {a}–{b}", "நேரம் {a}–{b}"],
   "mall bay {w}": ["සාප්පු ස්ථානය {w}", "மால் இடம் {w}"],
@@ -382,6 +387,30 @@ const D: Record<string, [string, string]> = {
   "Waypoint delivery update: {{1}} (RouteLanka)": ["Waypoint භාරදීම් යාවත්කාලීනය: {{1}} (RouteLanka)", "Waypoint விநியோக அறிவிப்பு: {{1}} (RouteLanka)"],
   "Your delivery arrives 05:40–06:10 tomorrow on VEH041.": ["ඔබේ භාරදීම හෙට VEH041 හි 05:40–06:10 අතර පැමිණේ.", "உங்கள் விநியோகம் நாளை VEH041 இல் 05:40–06:10 க்குள் வரும்."],
   "Open this link to report the problem: {u}": ["ගැටලුව වාර්තා කිරීමට මෙම සබැඳිය විවෘත කරන්න: {u}", "சிக்கலைத் தெரிவிக்க இந்த இணைப்பைத் திறக்கவும்: {u}"],
+  // Connecting WhatsApp (store messages screen)
+  "WhatsApp updates": ["WhatsApp යාවත්කාලීන", "WhatsApp அறிவிப்புகள்"],
+  "Connected to {p}": ["{p} වෙත සම්බන්ධයි", "{p} உடன் இணைக்கப்பட்டது"],
+  "demo number": ["ආදර්ශ අංකය", "மாதிரி எண்"],
+  "Connected from the phone itself{n}.": ["දුරකථනයෙන්ම සම්බන්ධ කරන ලදී{n}.", "தொலைபேசியிலிருந்தே இணைக்கப்பட்டது{n}."],
+  "set up by {n}": ["{n} විසින් සකස් කරන ලදී", "{n} அமைத்தார்"],
+  "Set up by Waypoint.": ["Waypoint විසින් සකස් කරන ලදී.", "Waypoint அமைத்தது."],
+  "Every store starts with a demo number in the simulator.": ["සෑම වෙළඳසැලක්ම සිමියුලේටරයේ ආදර්ශ අංකයකින් ආරම්භ වේ.", "ஒவ்வொரு கடையும் சிமுலேட்டரில் ஒரு மாதிரி எண்ணுடன் தொடங்குகிறது."],
+  "Send the message below from the phone that should get the updates.": ["යාවත්කාලීන ලැබිය යුතු දුරකථනයෙන් පහත පණිවිඩය යවන්න.", "அறிவிப்புகளைப் பெற வேண்டிய தொலைபேசியிலிருந்து கீழே உள்ள செய்தியை அனுப்பவும்."],
+  "Not connected. Updates show here in the app only.": ["සම්බන්ධ කර නැත. යාවත්කාලීන මෙහි යෙදුමේ පමණක් පෙන්වයි.", "இணைக்கப்படவில்லை. அறிவிப்புகள் இங்கே செயலியில் மட்டும் தெரியும்."],
+  "QR code that opens WhatsApp": ["WhatsApp විවෘත කරන QR කේතය", "WhatsApp ஐத் திறக்கும் QR குறியீடு"],
+  "Scan the code with that phone, or open the link on it. WhatsApp opens with this message ready: press send.": ["එම දුරකථනයෙන් කේතය ස්කෑන් කරන්න, නැතහොත් එහි සබැඳිය විවෘත කරන්න. මෙම පණිවිඩය සූදානම්ව WhatsApp විවෘත වේ: යවන්න ඔබන්න.", "அந்தத் தொலைபேசியில் குறியீட்டை ஸ்கேன் செய்யவும் அல்லது இணைப்பைத் திறக்கவும். இந்தச் செய்தி தயாராக WhatsApp திறக்கும்: அனுப்பு என்பதை அழுத்தவும்."],
+  "To {b}. The code works for 30 minutes. Waiting for your message…": ["{b} වෙත. කේතය මිනිත්තු 30 ක් වලංගුයි. ඔබේ පණිවිඩය බලාපොරොත්තුවෙන්…", "{b} க்கு. குறியீடு 30 நிமிடங்கள் செல்லுபடியாகும். உங்கள் செய்திக்காகக் காத்திருக்கிறது…"],
+  "See it on this store's phone (WhatsApp simulator)": ["මෙම වෙළඳසැලේ දුරකථනයෙන් බලන්න (WhatsApp සිමියුලේටරය)", "இந்தக் கடையின் தொலைபேசியில் பார்க்கவும் (WhatsApp சிமுலேட்டர்)"],
+  "Open WhatsApp (simulator)": ["WhatsApp විවෘත කරන්න (සිමියුලේටරය)", "WhatsApp ஐத் திற (சிமுலேட்டர்)"],
+  "Open WhatsApp": ["WhatsApp විවෘත කරන්න", "WhatsApp ஐத் திற"],
+  "New code": ["නව කේතය", "புதிய குறியீடு"],
+  "Demo: the simulator plays the store's phone. On a real phone the link opens WhatsApp.": ["ආදර්ශනය: සිමියුලේටරය වෙළඳසැලේ දුරකථනය ලෙස ක්‍රියා කරයි. සැබෑ දුරකථනයක සබැඳිය WhatsApp විවෘත කරයි.", "டெமோ: சிமுலேட்டர் கடையின் தொலைபேசியாகச் செயல்படுகிறது. உண்மையான தொலைபேசியில் இணைப்பு WhatsApp ஐத் திறக்கும்."],
+  "Change number": ["අංකය වෙනස් කරන්න", "எண்ணை மாற்று"],
+  "Connect WhatsApp": ["WhatsApp සම්බන්ධ කරන්න", "WhatsApp ஐ இணை"],
+  Disconnect: ["විසන්ධි කරන්න", "துண்டி"],
+  "WhatsApp connected. Delivery updates for {o} now come to this number. Send STOP to turn them off.": ["WhatsApp සම්බන්ධ විය. {o} සඳහා බෙදාහැරීමේ යාවත්කාලීන දැන් මෙම අංකයට ලැබේ. ඒවා නැවැත්වීමට STOP යවන්න.", "WhatsApp இணைக்கப்பட்டது. {o} க்கான விநியோக அறிவிப்புகள் இனி இந்த எண்ணுக்கு வரும். நிறுத்த STOP அனுப்பவும்."],
+  "WhatsApp turned off from {p} (STOP). Updates still show here in the app.": ["{p} වෙතින් WhatsApp නවත්වන ලදී (STOP). යාවත්කාලීන තවමත් මෙහි යෙදුමේ පෙන්වයි.", "{p} இலிருந்து WhatsApp நிறுத்தப்பட்டது (STOP). அறிவிப்புகள் இன்னும் இங்கே செயலியில் தெரியும்."],
+  "WhatsApp disconnected by {n}. Updates still show here in the app.": ["{n} විසින් WhatsApp විසන්ධි කරන ලදී. යාවත්කාලීන තවමත් මෙහි යෙදුමේ පෙන්වයි.", "{n} WhatsApp ஐ துண்டித்தார். அறிவிப்புகள் இன்னும் இங்கே செயலியில் தெரியும்."],
   "Please use the buttons under each message.": ["කරුණාකර එක් එක් පණිවිඩය යටතේ ඇති බොත්තම් භාවිතා කරන්න.", "ஒவ்வொரு செய்தியின் கீழுள்ள பொத்தான்களைப் பயன்படுத்தவும்."],
   "We'll wait": ["අපි බලා සිටිමු", "நாங்கள் காத்திருப்போம்"],
   "Can't receive, send tomorrow": ["භාරගත නොහැක, හෙට එවන්න", "பெற முடியாது, நாளை அனுப்பவும்"],
@@ -412,6 +441,13 @@ const D: Record<string, [string, string]> = {
   "No messages yet.": ["තවම පණිවිඩ නැත.", "இன்னும் செய்திகள் இல்லை."],
   Today: ["අද", "இன்று"],
   Yesterday: ["ඊයේ", "நேற்று"],
+  // Dates from the night being run ({d}, {w} are rendered with dateLabel)
+  "{d} · receiving window {a}–{b}": ["{d} · භාරගැනීමේ කාලය {a}–{b}", "{d} · பெறும் நேரம் {a}–{b}"],
+  "No orders for the {w} run at this outlet.": ["මෙම වෙළඳසැලට {w} ගමනට ඇණවුම් නැත.", "இந்தக் கடைக்கு {w} பயணத்தில் ஆர்டர்கள் இல்லை."],
+  "**Not coming on the {w} run.** {c} Reason: {r}. Moved to **{d}**, and you are first in line.": ["**{w} ගමනේ නොඑයි.** {c} හේතුව: {r}. **{d}** වෙත මාරු කළ අතර, ඔබ පෝලිමේ පළමුවැන්නා වේ.", "**{w} பயணத்தில் வராது.** {c} காரணம்: {r}. **{d}** க்கு மாற்றப்பட்டது, நீங்கள் வரிசையில் முதலிடம்."],
+  "Nothing added yet. Use the + buttons, or start from the {w} order.": ["තවම කිසිවක් එක් කර නැත. + බොත්තම් භාවිත කරන්න, නැතහොත් {w} ඇණවුමෙන් අරඹන්න.", "இன்னும் எதுவும் சேர்க்கவில்லை. + பொத்தான்களைப் பயன்படுத்துங்கள், அல்லது {w} ஆர்டரிலிருந்து தொடங்குங்கள்."],
+  "Start from the {w} order": ["{w} ඇණවුමෙන් අරඹන්න", "{w} ஆர்டரிலிருந்து தொடங்கு"],
+  "Your {k} delivery is **not coming tomorrow morning**. Reason: {r}. It moves to **{d}** and you are first in line.": ["ඔබේ {k} භාරදීම **හෙට උදේ නොඑයි**. හේතුව: {r}. එය **{d}** වෙත යන අතර ඔබ පෝලිමේ පළමුවැන්නා වේ.", "உங்கள் {k} விநியோகம் **நாளை காலை வராது**. காரணம்: {r}. இது **{d}** க்கு மாற்றப்பட்டது, நீங்கள் வரிசையில் முதலிடம்."],
   "Friday 24 April": ["අප්‍රේල් 24 සිකුරාදා", "ஏப்ரல் 24 வெள்ளிக்கிழமை"],
 };
 
@@ -426,12 +462,40 @@ export function tr(lang: Lang, key: string, vars?: Record<string, string | numbe
  * A store message as stored: an English template (the translation key) and its values. Values written as
  * { $t: "chilled" } are translated too. A leading emoji stays outside the translation key.
  */
-export type MessageVars = Record<string, string | number | { $t: string } | null | undefined>;
+/** A value in a stored message: text, a translation key ({$t}), or a date ({$d}, "2026-04-25"), shown in the reader's language. */
+export type MessageVars = Record<string, string | number | { $t: string } | { $d: string; part?: "full" | "weekday" } | null | undefined>;
+
+// Day and month names, Monday first, matching the translations above (the same on every device and server).
+const WEEKDAY = {
+  en: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+  si: ["සඳුදා", "අඟහරුවාදා", "බදාදා", "බ්‍රහස්පතින්දා", "සිකුරාදා", "සෙනසුරාදා", "ඉරිදා"],
+  ta: ["திங்கள்", "செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி", "சனி", "ஞாயிறு"],
+};
+const WEEKDAY_TA_FULL = ["திங்கட்கிழமை", "செவ்வாய்க்கிழமை", "புதன்கிழமை", "வியாழக்கிழமை", "வெள்ளிக்கிழமை", "சனிக்கிழமை", "ஞாயிற்றுக்கிழமை"];
+const MONTH = {
+  en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+  si: ["ජනවාරි", "පෙබරවාරි", "මාර්තු", "අප්‍රේල්", "මැයි", "ජූනි", "ජූලි", "අගෝස්තු", "සැප්තැම්බර්", "ඔක්තෝබර්", "නොවැම්බර්", "දෙසැම්බර්"],
+  ta: ["ஜனவரி", "பிப்ரவரி", "மார்ச்", "ஏப்ரல்", "மே", "ஜூன்", "ஜூலை", "ஆகஸ்ட்", "செப்டம்பர்", "அக்டோபர்", "நவம்பர்", "டிசம்பர்"],
+};
+
+/** "2026-04-25" -> "Saturday 25 April" / "අප්‍රේල් 25 සෙනසුරාදා" / "ஏப்ரல் 25 சனிக்கிழமை"; or just the weekday. */
+export function dateLabel(lang: Lang, iso: string, part: "full" | "weekday" = "full"): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const wd = (d.getUTCDay() + 6) % 7;
+  if (part === "weekday") return WEEKDAY[lang][wd];
+  const day = d.getUTCDate();
+  const month = MONTH[lang][d.getUTCMonth()];
+  if (lang === "en") return `${WEEKDAY.en[wd]} ${day} ${month}`;
+  return `${month} ${day} ${lang === "ta" ? WEEKDAY_TA_FULL[wd] : WEEKDAY.si[wd]}`;
+}
 
 export function renderMessage(lang: Lang, template: string, vars: MessageVars = {}): string {
   const m = template.match(/^(\p{Extended_Pictographic}\uFE0F?\s)([\s\S]*)$/u);
   const [icon, key] = m ? [m[1], m[2]] : ["", template];
-  const v = Object.fromEntries(Object.entries(vars).map(([k, x]) => [k, x && typeof x === "object" ? tr(lang, x.$t) : (x ?? "")]));
+  const v = Object.fromEntries(
+    Object.entries(vars).map(([k, x]) => [k, x && typeof x === "object" ? ("$d" in x ? dateLabel(lang, x.$d, x.part) : tr(lang, x.$t)) : (x ?? "")]),
+  );
   return icon + tr(lang, key, v);
 }
 

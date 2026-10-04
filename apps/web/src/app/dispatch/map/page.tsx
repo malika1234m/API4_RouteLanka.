@@ -11,7 +11,7 @@ import { DEPOT_POS, DISTRICT_POS as DISTRICT_CENTER, outletPos, type LatLng } fr
 import { compatibleSwap } from "@/lib/monitor";
 import { DelayDecision, RoadBanner } from "@/components/DelayDecision";
 import { delayedEta } from "@/lib/delay";
-import { ROAD_TODAY } from "@/lib/roads";
+import { runFor, runKey } from "@/lib/runs";
 import { seed, tripKey, vehicleById } from "@/lib/seed";
 import { useDemo, type DemoState } from "@/lib/store";
 import type { Order } from "@/lib/types";
@@ -20,7 +20,6 @@ type Status = "held" | "issue" | "nosignal" | "late" | "risk" | "ok" | "depot" |
 const LABEL: Record<Status, string> = { held: "Held up", issue: "Issue", nosignal: "No signal", late: "Likely late", risk: "At risk", ok: "On schedule", depot: "At the depot", done: "Completed" };
 const COLOR: Record<Status, string> = { held: "#8a6400", issue: "#a8301f", nosignal: "#5d6b7e", late: "#a8301f", risk: "#f5b800", ok: "#23703c", depot: "#16233a", done: "#23703c" };
 const RANK: Record<Status, number> = { held: -1, issue: 0, nosignal: 1, late: 2, risk: 3, ok: 4, depot: 5, done: 6 };
-const DRV = `${seed.personas.driver.vehicle_id}#${seed.personas.driver.trip_id}`;
 
 interface Run {
   k: string;
@@ -65,7 +64,8 @@ function buildRuns(s: DemoState): Run[] {
     const left = s.departed[k];
     const delivered = mine.filter((o) => isDone(s, o));
     const next = mine.find((o) => !isDone(s, o));
-    const offline = k === DRV && !s.driver.online && !!left;
+    const phone = runFor(s, k);
+    const offline = !!phone && !phone.online && !!left;
     const remainingRisk = Math.max(0, ...mine.filter((o) => !isDone(s, o)).map((o) => o.pred_late_prob ?? 0));
     const issue = orders.some((o) => {
       const st = s.states[o.order_ref];
@@ -88,10 +88,11 @@ function buildRuns(s: DemoState): Run[] {
     if (last) {
       pos = last.pos;
       lastSeen = `Last report ${last.at}: ${last.text}`;
-      if (offline) lastSeen = `No signal since ${s.driver.offlineSince}. ${lastSeen}`;
+      if (offline) lastSeen = `No signal since ${phone!.offlineSince}. ${lastSeen}`;
     }
-    const held = k === DRV && !!s.driver.delay && !!next;
-    if (held) lastSeen = `${s.driver.delay!.via === "sms" ? "SMS" : "Report"} ${s.driver.delay!.at}: held up near ${s.driver.delay!.near}, about ${s.driver.delay!.minutes} min. ${lastSeen}`;
+    const delay = phone?.delay;
+    const held = !!delay && !!next;
+    if (held) lastSeen = `${delay!.via === "sms" ? "SMS" : "Report"} ${delay!.at}: held up near ${delay!.near}, about ${delay!.minutes} min. ${lastSeen}`;
     let status: Status = "depot";
     if (!next && left) status = "done";
     else if (held) status = "held";
@@ -199,7 +200,7 @@ function LeafletMap({ runs, selected, onSelect, depot }: { runs: Run[]; selected
     drawn.current.clear();
     outletKey.current = "";
     fittedFor.current = "";
-    for (const [d, idx] of Object.entries(ROAD_TODAY)) {
+    for (const [d, idx] of Object.entries(seed.road_today)) {
       const c = DISTRICT_CENTER[d];
       if (idx < 75 && c) Lm.circle(c, { radius: 9000, color: "#8a6400", weight: 1.5, dashArray: "4 4", fillColor: "#f5b800", fillOpacity: 0.12, interactive: true }).bindTooltip(`${d}: road index ${idx} today (100 is normal)`).addTo(ls.base);
     }
@@ -307,7 +308,7 @@ export default function MapPage() {
   const [depot, setDepot] = useState("Kandy");
   const [filter, setFilter] = useState<"all" | "attention" | "road" | "depot">("all");
   const runs = useMemo(() => buildRuns(s), [s]);
-  const [selected, setSelected] = useState<string | undefined>(DRV);
+  const [selected, setSelected] = useState<string | undefined>(() => runKey(s.driver));
   const here = runs.filter((r) => r.depot === depot).sort((a, b) => RANK[a.status] - RANK[b.status] || a.depart.localeCompare(b.depart));
   const match = (r: Run, f: typeof filter) => f === "all" || (f === "attention" ? ["issue", "nosignal", "late", "risk"].includes(r.status) : f === "road" ? !!r.left : !r.left);
   const shown = here.filter((r) => match(r, filter));
@@ -396,7 +397,7 @@ function RunDetail({ r, onClose, s, dispatch }: { r: Run; onClose: () => void; s
           </p>
           <p className="text-sm text-mute">
             {r.brand} · {r.district} · departs {r.depart}
-            {r.k === DRV ? ` · ${seed.personas.driver.name}` : ""}
+            {runFor(s, r.k)?.name ? ` · ${runFor(s, r.k)!.name}` : ""}
           </p>
         </div>
         <button onClick={onClose} className="ml-auto grid size-8 place-items-center rounded-md text-mute hover:bg-paper" aria-label="Close">
@@ -438,9 +439,9 @@ function RunDetail({ r, onClose, s, dispatch }: { r: Run; onClose: () => void; s
           );
         })}
       </ol>
-      {r.k === DRV && s.driver.delay && (
+      {runFor(s, r.k)?.delay && (
         <div className="mt-3">
-          <DelayDecision />
+          <DelayDecision vid={r.vehicle_id} />
         </div>
       )}
       {moved.length > 0 && (
@@ -456,7 +457,7 @@ function RunDetail({ r, onClose, s, dispatch }: { r: Run; onClose: () => void; s
         </div>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {r.status === "nosignal" && !s.driver.delay && last && swap && (last.pred_late_prob ?? 0) >= 0.5 && (
+        {r.status === "nosignal" && !runFor(s, r.k)?.delay && last && swap && (last.pred_late_prob ?? 0) >= 0.5 && (
           <Btn variant="primary" onClick={() => dispatch({ type: "reassign", ref: last.order_ref, to: swap })}>
             Move last stop ({last.outlet_id}) to {swap}
           </Btn>

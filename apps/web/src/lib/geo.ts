@@ -33,10 +33,14 @@ const INTER_STOP_KM: Record<string, number> = { Colombo: 4, Gampaha: 7, Kalutara
  */
 export function outletPos(outletId: string, district: string): LatLng {
   const c = DISTRICT_POS[district] ?? [7.3, 80.4];
-  let h = 0;
-  for (const ch of outletId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  // FNV-1a, then a murmur3 finaliser: outlets with similar ids (OUT026, OUT028) land far apart, not stacked.
+  let h = 2166136261;
+  for (const ch of outletId) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  h = (h ^ (h >>> 16)) >>> 0;
   const ang = ((h % 360) * Math.PI) / 180;
-  const km = (INTER_STOP_KM[district] ?? 8) * (0.35 + ((h >> 9) % 60) / 100);
+  const km = (INTER_STOP_KM[district] ?? 8) * (0.35 + ((h >>> 9) % 60) / 100);
   return [c[0] + (Math.sin(ang) * km) / 111, c[1] + (Math.cos(ang) * km) / (111 * Math.cos((c[0] * Math.PI) / 180))];
 }
 

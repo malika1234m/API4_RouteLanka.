@@ -85,6 +85,11 @@ run = sorted([o for o in v["orders"] if o.get("vehicle_id") == drv["vehicle_id"]
 assert run, "the driver's trip has stops"
 step(f"plan published; driver run {key} has {len(run)} stops")
 
+# Load, release, deliver: the driver can't record a stop while the truck is still at the dock.
+status, out = call("/sync", {"offline": False, "events": [{"id": str(uuid.uuid4()), "order_ref": run[0]["order_ref"], "type": "arrived", "at": "03:40"}]}, "driver")
+assert status == 409 and "left the dock" in out.get("error", ""), f"a stop before release must be refused: {status} {out}"
+step("guard: no arrival or delivery before the loader releases the truck")
+
 # Guards: a shortfall decision needs a flag; an unknown trip can't be marked ready.
 status, out = call("/commands", {"type": "shortfallDecision", "ref": run[0]["order_ref"], "decision": "send_short"}, "dispatcher")
 assert status == 409, f"decision without a flag must be refused: {status} {out}"

@@ -178,3 +178,19 @@ export const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delive
 export const demoWhatsAppNumber = (outletId: string) => `94770000${outletId.slice(3)}`;
 /** 94770000029 -> +94 77 000 0029 */
 export const formatPhone = (n: string) => `+${n.slice(0, 2)} ${n.slice(2, 4)} ${n.slice(4, 7)} ${n.slice(7)}`;
+
+/**
+ * Connecting a store's own WhatsApp: the store sends "JOIN <outlet> <code>" to the business number from its phone
+ * (a wa.me link fills it in). The message proves the phone is the store's and is its opt-in. "STOP" disconnects.
+ */
+export const joinText = (outlet: string, code: string) => `JOIN ${outlet} ${code}`;
+
+export function parseJoin(text: string): { outlet: string; code: string } | null {
+  const m = text.trim().toUpperCase().match(/^JOIN\s+(OUT\d{3})\s+(\d{6})$/);
+  return m ? { outlet: m[1], code: m[2] } : null;
+}
+
+export const isStop = (text: string) => /^(STOP|UNSUBSCRIBE)$/i.test(text.trim());
+
+/** A link that opens WhatsApp on the phone with the message ready to send. */
+export const waMeLink = (businessNumber: string, text: string) => `https://wa.me/${businessNumber}?text=${encodeURIComponent(text)}`;

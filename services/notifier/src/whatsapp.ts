@@ -44,7 +44,7 @@ async function applyLiveNumbers(sql: Sql) {
       console.warn(`[whatsapp] ignoring WHATSAPP_LIVE_NUMBERS entry "${pair}" (expected OUT029:94771234567)`);
       continue;
     }
-    await sql`UPDATE outlet_contacts SET phone = ${phone}, live = true WHERE outlet_id = ${outlet}`;
+    await sql`UPDATE outlet_contacts SET phone = ${phone}, live = true, source = 'config' WHERE outlet_id = ${outlet}`;
     console.log(`[whatsapp] ${outlet} -> live number ending ${phone.slice(-4)}`);
   }
 }

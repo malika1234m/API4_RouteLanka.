@@ -10,8 +10,9 @@ import type { Order } from "@/lib/types";
 import { SyncChip } from "@/components/SyncChip";
 import { useT, type T } from "@/lib/i18n";
 import { useState } from "react";
-import { DELAY_REASONS, ROAD_TODAY, type DelayReason } from "@/lib/roads";
+import { DELAY_REASONS, roadToday, type DelayReason } from "@/lib/roads";
 import { fromMin } from "@/lib/delay";
+import { runKey } from "@/lib/runs";
 
 const toMinutes = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -63,9 +64,13 @@ function NextStop({ stops, next, departed, t }: { stops: Order[]; next?: Order; 
               </li>
             ))}
           </ul>
-          <Link href={`/driver/stop/${next.order_ref}`} className="mt-4 flex h-12 items-center justify-center rounded-md bg-hivis font-semibold text-night">
-            {t("Open this stop")}
-          </Link>
+          {departed ? (
+            <Link href={`/driver/stop/${next.order_ref}`} className="mt-4 flex h-12 items-center justify-center rounded-md bg-hivis font-semibold text-night">
+              {t("Open this stop")}
+            </Link>
+          ) : (
+            <p className="mt-4 flex h-12 items-center justify-center rounded-md bg-line text-sm font-semibold text-mute">{t("Opens when the truck leaves the dock")}</p>
+          )}
         </Card>
       ) : (
         <Card className="p-5">
@@ -106,7 +111,7 @@ function DelayReport({ near, t }: { near: string; t: T }) {
     return (
       <div className="mt-3 rounded-lg border-2 border-hivis bg-amber-soft p-4" role="status">
         <p className="font-semibold">{t("Delay reported at {t}: {r}, about {n} min.", { t: d.at, r: t(DELAY_REASONS.find((r) => r.id === d.reason)!.label).toLowerCase(), n: d.minutes })}</p>
-        <p className="mt-1 text-sm">{d.via === "sms" ? t("Sent by SMS, no data signal needed.") : t("Sent.")} {s.delayToldAt && s.driver.online ? t("The dispatcher has decided your remaining stops; they are updated below.") : t("The dispatcher is deciding your remaining stops. You don't need to call.")}</p>
+        <p className="mt-1 text-sm">{d.via === "sms" ? t("Sent by SMS, no data signal needed.") : t("Sent.")} {d.toldAt && s.driver.online ? t("The dispatcher has decided your remaining stops; they are updated below.") : t("The dispatcher is deciding your remaining stops. You don't need to call.")}</p>
       </div>
     );
   return (
@@ -159,19 +164,20 @@ export default function TodaysRun() {
   const { s, dispatch } = useDemo();
   const { t } = useT("driver");
   const p = seed.personas.driver;
-  const k = `${p.vehicle_id}#${p.trip_id}`;
+  const k = runKey(s.driver);
   const stops = s.orders.filter((o) => tripKey(o) === k && o.decision === "served").sort((a, b) => (a.stop_seq ?? 0) - (b.stop_seq ?? 0));
   const isDoneO = (o: Order) => ["delivered", "received"].includes(driverState(s, o.order_ref).stage);
   const backO = (o: Order) => !!s.states[o.order_ref].deferredEnRoute && s.driver.online && !isDoneO(o);
   const movedO = (o: Order) => (!!s.states[o.order_ref].reassignedTo && s.driver.online && !isDoneO(o)) || backO(o);
   const next = stops.find((o) => !isDoneO(o) && !s.states[o.order_ref].reassignedTo && !(s.states[o.order_ref].deferredEnRoute && s.driver.online));
-  const roadIdx = ROAD_TODAY[stops[0]?.depot === "Kandy" ? "Kandy" : "Colombo"];
+  const roadIdx = roadToday(stops[0]?.depot === "Kandy" ? "Kandy" : "Colombo");
   const meta = seed.trips.find((t) => tripKey(t) === k);
   // Stops the dispatcher moved to another vehicle no longer count towards this driver's run.
   const mine = stops.filter((o) => !((s.states[o.order_ref].reassignedTo || s.states[o.order_ref].deferredEnRoute) && s.driver.online));
   const groups = groupStops(stops);
   const nextGroup = next ? groups.find((g) => g.seq === next.stop_seq) : undefined;
   const liveStops = new Set(mine.map((o) => o.stop_seq)).size;
+  const loadedCount = stops.filter((o) => s.states[o.order_ref].stage !== "planned").length;
 
   return (
     <Shell role="driver" width="medium" who={p.name} right={<SyncChip />}>
@@ -229,7 +235,22 @@ export default function TodaysRun() {
         </Card>
       ) : (
         <>
-          {!s.departed[k] && <p className="mt-2 rounded-md bg-paper px-3 py-2 text-sm text-mute">{t("Loading at the dock. The run is already on your phone.")}</p>}
+          {!s.departed[k] && (
+            // Load, release, deliver: the stops open once the loader releases the truck.
+            <Card className="mt-3 border-l-4 border-l-hivis p-4">
+              <p className="font-semibold">{t("At the dock")}</p>
+              <p className="mt-1 text-sm">
+                {s.ready[k]
+                  ? t("Loaded and checked. Waiting for the loader to release the truck.")
+                  : t("{a} of {b} orders loaded. Your stops open when the loader releases the truck.", { a: loadedCount, b: stops.length })}
+              </p>
+              <div className="mt-2 flex gap-1" aria-hidden>
+                {stops.map((o) => (
+                  <span key={o.order_ref} className={`h-1.5 flex-1 rounded-sm ${s.states[o.order_ref].stage === "planned" ? "bg-line" : "bg-night"}`} />
+                ))}
+              </div>
+            </Card>
+          )}
           {roadIdx < 75 && !s.driver.delay && <p className="mt-2 rounded-md border border-hivis/60 bg-amber-soft px-3 py-2 text-sm font-semibold text-hivis-deep">{t("Roads are slow around {d} today (monsoon, road index {i}). Allow extra time, and report any hold-up below.", { d: stops[0]?.depot, i: roadIdx })}</p>}
 
           {/* The one thing to do now, big enough to read at arm's length. Wider screens use the side panel. */}
@@ -273,9 +294,13 @@ export default function TodaysRun() {
                   <span className="text-mute">{t("Unloading")}:</span> {t(DOCK[next.dock_type])}
                   {next.parking_constraint === "van_only" ? ` · ${t("van access only")}` : ""}
                 </p>
-                <Link href={`/driver/stop/${next.order_ref}`} className="mt-4 flex h-16 items-center justify-center gap-2 rounded-md bg-hivis text-xl font-bold text-night">
-                  {t("Start this stop")} <IconArrow className="size-6" />
-                </Link>
+                {s.departed[k] ? (
+                  <Link href={`/driver/stop/${next.order_ref}`} className="mt-4 flex h-16 items-center justify-center gap-2 rounded-md bg-hivis text-xl font-bold text-night">
+                    {t("Start this stop")} <IconArrow className="size-6" />
+                  </Link>
+                ) : (
+                  <p className="mt-4 flex h-16 items-center justify-center rounded-md bg-line px-3 text-center font-semibold text-mute">{t("Opens when the truck leaves the dock")}</p>
+                )}
               </div>
             </Card>
           )}

@@ -20,7 +20,7 @@ export const PAGE = /* html */ `<!doctype html>
   .meta .st { font-weight:600 } .st.read { color:#53bdeb } .st.failed { color:#c0392b }
   .btns { display:grid; gap:4px; margin:4px 0 8px; max-width:88% } .btns button { background:#fff; border:0; border-radius:8px; padding:8px; color:#027eb5; font-weight:600; cursor:pointer; box-shadow:0 1px .5px #0002 }
   .btns button[disabled] { color:var(--mute); cursor:default } .tag { display:inline-block; font-size:10px; background:#eef; color:#335; border-radius:4px; padding:0 4px; margin-right:4px }
-  form { display:flex; gap:6px; padding:8px; background:#f0f2f5 } form input { flex:1; border:0; border-radius:20px; padding:9px 14px } form button { border:0; background:var(--teal); color:#fff; border-radius:20px; padding:0 14px }
+  form { display:flex; gap:6px; padding:8px; background:#f0f2f5 } form.new input { font-size:16px } form input { flex:1; border:0; border-radius:20px; padding:9px 14px } form button { border:0; background:var(--teal); color:#fff; border-radius:20px; padding:0 14px }
   .wire { overflow:auto; font-size:12px } .w { border-bottom:1px solid var(--line); padding:7px 10px; cursor:pointer } .w .code { font-weight:700 } .w.bad .code { color:#c0392b } .w.good .code { color:#1e8e3e }
   .w .dir { display:inline-block; width:84px; white-space:nowrap; color:var(--mute) } .tools label { font-size:12px; display:flex; align-items:center; gap:4px; margin-left:auto } pre { background:#0b141a; color:#d1d7db; padding:8px; border-radius:6px; overflow:auto; max-height:300px; font-size:11px; white-space:pre-wrap }
   .tools { display:flex; gap:6px; padding:8px; border-bottom:1px solid var(--line) } .tools button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 8px; cursor:pointer; font-size:12px }
@@ -43,7 +43,10 @@ const fmt = (n) => "+" + n.slice(0,2) + " " + n.slice(2,4) + " " + n.slice(4,7) 
 const outlet = (n) => /^94770000\\d{3}$/.test(n) ? "OUT" + n.slice(-3) : "";
 const wa = (s) => esc(s).replace(/\\*([^*\\n]+)\\*/g, "<b>$1</b>");
 const time = (t) => new Date(t).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
-let state = { phones: [], wire: [] }, open = new URLSearchParams(location.search).get("phone"), seen = {}, openWire = new Set();
+const qs = new URLSearchParams(location.search);
+let state = { phones: [], wire: [] }, open = qs.get("phone"), seen = {}, openWire = new Set();
+// A wa.me-style link: open WhatsApp with a message ready to send (the store's JOIN message).
+let prefill = qs.get("text") || "";
 const post = (p, b) => fetch("/wa-sim/api/" + p, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(b || {}) }).then((r) => r.json());
 
 function renderPhones() {
@@ -54,9 +57,27 @@ function renderPhones() {
   document.querySelectorAll(".ph").forEach((el) => el.onclick = () => { open = el.dataset.n; history.replaceState(null, "", "?phone=" + open); post("read", { phone: open }); render(); });
 }
 
+/** A link with a message but no phone yet: which phone is sending it? (On a real phone, that's simply your phone.) */
+const guess = "9477" + String(Math.floor(1000000 + Math.random() * 8999999));
+function renderNew() {
+  const box = $("#phone");
+  if (!prefill || box.dataset.mode === "new") return; // drawn once, so the number being typed survives a refresh
+  box.dataset.mode = "new";
+  box.innerHTML = '<div class="top"><b>Send from which phone?</b><small>On a real phone the link opens WhatsApp on that phone. Here, pick the phone number that sends it.</small></div>' +
+    '<form class="new"><input id="newnum" inputmode="numeric" pattern="[0-9]{8,15}" value="' + guess + '" aria-label="Phone number, digits only"><button>Open chat</button></form>' +
+    '<div class="chat"><div class="b me">' + esc(prefill) + '<div class="meta">ready to send</div></div></div>';
+  box.querySelector("form").onsubmit = (e) => {
+    e.preventDefault();
+    const n = $("#newnum").value.replace(/\D/g, "");
+    if (n.length < 8) return;
+    open = n; history.replaceState(null, "", "?phone=" + n + "&text=" + encodeURIComponent(prefill)); render();
+  };
+}
+
 function renderPhone() {
-  const p = state.phones.find((x) => x.number === open);
-  if (!p) return;
+  const p = state.phones.find((x) => x.number === open) || (open && prefill ? { number: open, messages: [] } : null);
+  if (!p) return renderNew();
+  $("#phone").dataset.mode = "chat";
   const box = $("#phone"); const chat = box.querySelector(".chat"); const atBottom = !chat || chat.scrollTop + chat.clientHeight > chat.scrollHeight - 30;
   box.innerHTML = '<div class="top"><b>Waypoint Deliveries ✓</b><small>on ' + (outlet(p.number) || "") + " " + fmt(p.number) + "'s phone · business account " + esc(state.config.phoneNumberId) + '</small></div><div class="chat">' +
     p.messages.map((m) => {
@@ -68,7 +89,9 @@ function renderPhone() {
     }).join("") + '</div><form><input placeholder="Type a message" aria-label="Type a message"><button>Send</button></form>';
   const c = box.querySelector(".chat"); if (atBottom) c.scrollTop = c.scrollHeight;
   box.querySelectorAll(".btns button").forEach((el) => el.onclick = () => { el.disabled = true; post("tap", { phone: open, messageId: el.dataset.m, button: Number(el.dataset.i) }).then(load); });
-  box.querySelector("form").onsubmit = (e) => { e.preventDefault(); const i = box.querySelector("input"); if (i.value.trim()) post("text", { phone: open, text: i.value.trim() }).then(load); i.value = ""; };
+  const input = box.querySelector("form input");
+  if (prefill && !input.value) input.value = prefill;
+  box.querySelector("form").onsubmit = (e) => { e.preventDefault(); const i = box.querySelector("input"); if (i.value.trim()) post("text", { phone: open, text: i.value.trim() }).then(load); i.value = ""; if (prefill) { prefill = ""; history.replaceState(null, "", "?phone=" + open); } };
   const n = p.messages.length; if (seen[open] !== n) { seen[open] = n; post("read", { phone: open }); }
 }
 

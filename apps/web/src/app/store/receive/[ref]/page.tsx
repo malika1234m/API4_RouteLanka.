@@ -4,7 +4,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Shell } from "@/components/Shell";
 import { Btn, BtnLink, Card, Chip, IconBack, IconCheck, RelayTrack } from "@/components/ui";
-import { outletById, seed, tripKey, vehicleById } from "@/lib/seed";
+import { delayOn } from "@/lib/delay";
+import { runFor } from "@/lib/runs";
+import { outletById, tripKey, vehicleById } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
 import type { LineIssue } from "@/lib/types";
 import { useT } from "@/lib/i18n";
@@ -47,7 +49,8 @@ export default function Receive() {
   const recorded = st.deliveredUnits;
   const gap = recorded !== undefined ? o.order_units - recorded : 0;
   const expected = recorded ?? o.order_units;
-  const offlineRoute = !s.driver.online && o.vehicle_id === seed.personas.driver.vehicle_id && o.trip_id === seed.personas.driver.trip_id;
+  const phone = o.vehicle_id ? runFor(s, tripKey(o)) : undefined;
+  const offlineRoute = !!phone && !phone.online;
   const choices = MODES.filter((m) => m.id !== "temperature" || o.temp_requirement === "chilled");
 
   if (st.receipt)
@@ -225,7 +228,7 @@ function Timeline({ orderRef }: { orderRef: string }) {
     ["Order confirmed", "before 16:00", "Received by Waypoint before the cutoff"],
     ["Planned", published, t("On {v}, stop {n}", { v: o.vehicle_id, n: o.stop_seq })],
     ["Left the dock", left, "Loaded in stop order and released"],
-    ...(s.driver.delay && s.delayPlan[o.order_ref] ? ([["Held up on the road", s.driver.delay.at, "Road disruption reported by the driver; you were told the new time"]] as [string, string | undefined, string][]) : []),
+    ...(delayOn(s, o) && s.delayPlan[o.order_ref] ? ([["Held up on the road", delayOn(s, o)!.at, "Road disruption reported by the driver; you were told the new time"]] as [string, string | undefined, string][]) : []),
     ["Delivered", st.deliveredAt, st.pod?.method === "code" ? "Verified with your handover code" : st.pod?.name ? t("Signed by {n}", { n: st.pod.name }) : "Waiting for the driver's record"],
     ["Record sent", st.recordedOffline ? st.syncedAt : st.deliveredAt, st.recordedOffline ? "Recorded without signal, sent when the phone reconnected" : "Sent straight away"],
     ["Received", undefined, "Waiting for your confirmation"],

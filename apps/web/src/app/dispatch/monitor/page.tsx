@@ -7,6 +7,7 @@ import { Shell } from "@/components/Shell";
 import { Btn, BtnLink, Card, Chip, IconNoSignal } from "@/components/ui";
 import { compatibleSwap } from "@/lib/monitor";
 import { loadsFor } from "@/lib/rules";
+import { offlineRuns, runFor, runKey } from "@/lib/runs";
 import { seed, tripKey } from "@/lib/seed";
 import { useDemo, type DemoState, type FeedItem } from "@/lib/store";
 import type { Order, Vehicle } from "@/lib/types";
@@ -21,12 +22,12 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "done", label: "Completed" },
 ];
 
-const DRV = `${seed.personas.driver.vehicle_id}#${seed.personas.driver.trip_id}`;
 const isDelivered = (s: DemoState, o: Order) => ["delivered", "received"].includes(s.states[o.order_ref].stage);
 const isDone = (s: DemoState, o: Order) => ["delivered", "received"].includes(s.states[o.order_ref].stage) || !!s.states[o.order_ref].reassignedTo;
 
 function runStatus(s: DemoState, k: string, os: Order[]): Status {
-  const offline = k === DRV && !s.driver.online;
+  const run = runFor(s, k);
+  const offline = !!run && !run.online;
   const flagged = os.some((o) => (s.states[o.order_ref].loadFlag && !s.states[o.order_ref].loadDecision) || s.states[o.order_ref].exception || s.states[o.order_ref].receipt?.issue);
   if (offline || flagged) return "attention";
   if (os.every((o) => isDone(s, o))) return "done";
@@ -39,7 +40,7 @@ export default function LiveRuns() {
   const [view, setView] = useState<View>("all");
   const [depot, setDepot] = useState<"all" | "Peliyagoda" | "Kandy">("all");
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState<string | null>(DRV);
+  const [open, setOpen] = useState<string | null>(() => runKey(s.driver));
 
   if (!s.published)
     return (
@@ -65,7 +66,7 @@ export default function LiveRuns() {
   const q = query.trim().toLowerCase();
   const shown = runs
     .filter((r) => (view === "all" || r.status === view) && (depot === "all" || r.v.depot === depot) && (!q || `${r.v.vehicle_id} ${r.l.district} ${r.orders.map((o) => o.outlet_id).join(" ")}`.toLowerCase().includes(q)))
-    .sort((a, b) => order[a.status] - order[b.status] || Number(b.k === DRV) - Number(a.k === DRV) || a.k.localeCompare(b.k));
+    .sort((a, b) => order[a.status] - order[b.status] || Number(!!runFor(s, b.k)) - Number(!!runFor(s, a.k)) || a.k.localeCompare(b.k));
 
   const allStops = runs.flatMap((r) => r.orders);
   const delivered = allStops.filter((o) => isDelivered(s, o)).length;
@@ -73,13 +74,14 @@ export default function LiveRuns() {
   const openItems = s.feed.filter((f) => f.open);
   const rest = s.feed.filter((f) => !f.open).slice(0, 10);
   const count = (st: Status) => runs.filter((r) => r.status === st).length;
+  const noSignal = offlineRuns(s);
 
   const figures = [
     { k: "Runs tonight", v: runs.length, sub: `${count("dock")} still at the dock` },
-    { k: "On road", v: count("on_road") + (runs.find((r) => r.k === DRV && r.status === "attention" && s.departed[r.k]) ? 1 : 0), sub: "left the dock" },
+    { k: "On road", v: count("on_road") + runs.filter((r) => r.status === "attention" && s.departed[r.k] && runFor(s, r.k) && !runFor(s, r.k)!.online).length, sub: "left the dock" },
     { k: "Deliveries done", v: `${delivered}/${allStops.length}`, sub: `${Math.round((delivered / Math.max(allStops.length, 1)) * 100)}% complete` },
     { k: "Likely late", v: lateRisk, sub: "open stops at 50%+ risk", bad: lateRisk > 0 },
-    { k: "No signal", v: s.driver.online ? 0 : 1, sub: s.driver.online ? "all phones in contact" : `since ${s.driver.offlineSince}`, bad: !s.driver.online },
+    { k: "No signal", v: noSignal.length, sub: !noSignal.length ? "all phones in contact" : noSignal.length === 1 ? `${noSignal[0].vehicle_id} since ${noSignal[0].offlineSince}` : `${noSignal.map((r) => r.vehicle_id).join(", ")}`, bad: noSignal.length > 0 },
     { k: "Decisions waiting", v: openItems.length, sub: openItems.length ? "see the right-hand panel" : "nothing waiting", bad: openItems.length > 0 },
   ];
 
@@ -212,8 +214,9 @@ const STATUS_CHIP: Record<Status, React.ReactNode> = {
 function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders: Order[]; status: Status; l: { trip_id: number; brand?: string; district?: string } }; expanded: boolean; onToggle: () => void }) {
   const { s, dispatch } = useDemo();
   const { v, k, orders } = r;
-  const offline = k === DRV && !s.driver.online;
-  const lastIdx = offline ? orders.findIndex((o) => o.order_ref === s.driver.lastContactStop) : -1;
+  const run = runFor(s, k);
+  const offline = !!run && !run.online;
+  const lastIdx = offline ? orders.findIndex((o) => o.order_ref === run.lastContactStop) : -1;
   const mine = orders.filter((o) => !s.states[o.order_ref].reassignedTo);
   const done = mine.filter((o) => isDelivered(s, o)).length;
   const next = orders.find((o) => !isDone(s, o));
@@ -281,12 +284,12 @@ function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders:
         <td className="px-3 py-2 text-xs">
           {offline ? (
             <span className="inline-flex items-center gap-1 font-semibold text-hivis-deep">
-              <IconNoSignal className="size-4" /> No signal since {s.driver.offlineSince}
+              <IconNoSignal className="size-4" /> No signal since {run?.offlineSince}
             </span>
-          ) : k === DRV && s.driver.lastSync ? (
-            <span className="text-mute">Synced {s.driver.lastSync.at}</span>
-          ) : k === DRV && s.driver.lastContact ? (
-            <span className="text-mute">Check-in {s.driver.lastContact}</span>
+          ) : run?.lastSync ? (
+            <span className="text-mute">Synced {run.lastSync.at}</span>
+          ) : run?.lastContact ? (
+            <span className="text-mute">Check-in {run.lastContact}</span>
           ) : (
             <span className="text-mute">{s.departed[k] ? "In contact" : "—"}</span>
           )}
@@ -299,10 +302,10 @@ function RunRow({ r, expanded, onToggle }: { r: { v: Vehicle; k: string; orders:
             {offline && (
               <div className="mb-2 flex flex-wrap items-center gap-3 rounded-md border border-hivis bg-amber-soft px-3 py-2 text-sm">
                 <span>
-                  Last contact {s.driver.lastContact ?? s.departed[k] ?? "at the dock"}
+                  Last contact {run?.lastContact ?? s.departed[k] ?? "at the dock"}
                   {lastIdx >= 0 ? ` at stop ${orders[lastIdx].stop_seq}` : ""}. Records will arrive when the phone reconnects.
                 </span>
-                {s.driver.delay ? <span className="font-semibold">SMS {s.driver.delay.at}: held up about {s.driver.delay.minutes} min. Decide the stops in the right-hand panel.</span> : <ReassignLast orders={orders} vid={v.vehicle_id} dispatch={dispatch} />}
+                {run?.delay ? <span className="font-semibold">SMS {run.delay.at}: held up about {run.delay.minutes} min. Decide the stops in the right-hand panel.</span> : <ReassignLast orders={orders} vid={v.vehicle_id} dispatch={dispatch} />}
               </div>
             )}
             <table className="w-full text-sm">
@@ -376,7 +379,11 @@ function ReassignLast({ orders, vid, dispatch }: { orders: Order[]; vid: string;
 
 function DecisionCard({ f }: { f: FeedItem }) {
   const { s, dispatch } = useDemo();
-  if (f.role === "driver" && s.driver.delay && f.text.includes("delay")) return <DelayDecision />;
+  if (f.role === "driver" && f.text.includes("delay")) {
+    // "Report from VEH041: …" or "SMS from VEH041: …"
+    const vid = /^(?:Report|SMS) from (\S+):/.exec(f.text)?.[1];
+    if (vid && s.drivers.some((r) => r.vehicle_id === vid && r.delay)) return <DelayDecision vid={vid} />;
+  }
   const o = s.orders.find((x) => x.order_ref === f.ref);
   const st = f.ref ? s.states[f.ref] : undefined;
   if (f.role === "loader" && o && st?.loadFlag) {

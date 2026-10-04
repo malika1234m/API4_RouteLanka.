@@ -29,7 +29,7 @@ export type DemoState = Omit<DayView, "driver"> & {
 /** Actions the screens dispatch. Most map one-to-one onto API commands. */
 export type Action =
   | Command
-  | { type: "reset" }
+  | { type: "reset"; night?: string }
   | { type: "fieldEvent"; event: FieldEvent }
   | { type: "placeOrder"; order: Order }
   | { type: "loadFlag"; ref: string; issue: LineIssue }
@@ -191,7 +191,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     try {
       switch (a.type) {
         case "reset": {
-          await api("/day/new", {});
+          // A copy of the walkthrough night, or (with a date) a real night from the history, planned by the engine.
+          await api("/day/new", a.night ? { night: a.night } : {});
+          // That night's road conditions and other reference data.
+          try {
+            const r = await api<Reference>("/reference");
+            setReference(r);
+            writeLocal(REF_CACHE, JSON.stringify(r));
+          } catch {}
           writeLocal(OFFLINE_KEY, null);
           setOffline(false);
           await outboxRemove((await outboxAll()).map((e) => e.id));

@@ -44,7 +44,7 @@ async def main():
         # ---- Part 2: the planner --------------------------------------------------
         await page.goto(BASE + "/")
         await pause(5)
-        await click(page.locator("li", has_text="gehiru.dispatch").get_by_role("button", name="Sign in"), 10)
+        await click(page.get_by_role("button", name=re.compile(r"^Dispatcher")), 10)
         await click(page.get_by_role("link", name="Plan board", exact=True), 5)
         await click(page.get_by_role("button").filter(has_text="OUT070").last, 8)
         await page.evaluate("window.scrollTo({top: 0, behavior: 'smooth'})")
@@ -59,11 +59,15 @@ async def main():
         await smooth_to(noted)
         await pause(3)
         lang = phone.locator("button[aria-label^='Language']")
+        # Each tap waits for the change to be saved and shown (on a deployed server that takes a round trip).
         await lang.click()          # Sinhala
+        await phone.locator("button[aria-label^='Language: සිංහල']").wait_for()
         await pause(6)
         await lang.click()          # Tamil
+        await phone.locator("button[aria-label^='Language: தமிழ்']").wait_for()
         await asyncio.sleep(0.4)
         await lang.click()          # back to English
+        await phone.locator("button[aria-label^='Language: English']").wait_for()
         await pause(2)
         await click(noted, 5)
 
@@ -88,10 +92,19 @@ async def main():
         await click(page.get_by_role("button").filter(has_text="Send short"), 4)
 
         await page.goto(BASE + "/dock/VEH041/1")
+        # Wait for the loading list, then load each remaining line, waiting for each tap to be saved.
+        await page.get_by_label(re.compile(r"^Load position 1 of")).wait_for(timeout=30000)
         await pause(2)
-        while await load.count():
+        while (n := await load.count()):
             await click(load.first, 1.5)
-        await click(page.get_by_role("button").filter(has_text="Mark ready"), 2.5)
+            for _ in range(40):
+                if await load.count() < n:
+                    break
+                await asyncio.sleep(0.25)
+        # Mark ready appears once the server has confirmed every line (a round trip each on a deployed server).
+        ready = page.get_by_role("button").filter(has_text="Mark ready")
+        await ready.wait_for(timeout=30000)
+        await click(ready, 2.5)
         await click(page.get_by_role("button").filter(has_text="Release"), 5)
 
         # ---- Part 5: the driver, no signal ----------------------------------------------

@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { OutletPicker, useOutlet } from "@/components/OutletPicker";
+import { dateLabel } from "@routelanka/domain";
 import { Shell } from "@/components/Shell";
 import { Btn, BtnLink, Card, IconCheck, IconChill } from "@/components/ui";
 import { outletById, seed } from "@/lib/seed";
@@ -58,7 +59,7 @@ function lastOrderQty(outletId: string, lines: Line[]): Record<string, number> {
 
 export default function PlaceOrder() {
   const { s, dispatch } = useDemo();
-  const { t } = useT("store");
+  const { t, lang } = useT("store");
   const [outletId, setOutlet] = useOutlet();
   const outlet = outletById.get(outletId)!;
   const lines = LINES[outlet.brand];
@@ -66,7 +67,9 @@ export default function PlaceOrder() {
   const [done, setDone] = useState<Order[] | null>(null);
   const mins = useCountdown();
   const open = mins === null || mins > 0;
-  const runDay = t(open ? "Saturday 25 April" : "Monday 27 April");
+  // Before the 16:00 cutoff an order joins the next operating night's run; after it, the one after that.
+  const runDay = dateLabel(lang, open ? seed.next_runs[0] : (seed.next_runs[1] ?? seed.next_runs[0]));
+  const tonight = dateLabel(lang, s.day.service_date, "weekday");
 
   const submit = () => {
     const made: Order[] = [];
@@ -185,7 +188,7 @@ export default function PlaceOrder() {
                     <span className="font-cond font-semibold">{qty[l.key]}</span>
                   </li>
                 ))}
-                {total === 0 && <li className="px-4 py-3 text-mute">{t("Nothing added yet. Use the + buttons, or start from Friday's order.")}</li>}
+                {total === 0 && <li className="px-4 py-3 text-mute">{t("Nothing added yet. Use the + buttons, or start from the {w} order.", { w: tonight })}</li>}
               </ul>
               <dl className="grid grid-cols-3 gap-px border-t border-line bg-line text-center">
                 {[
@@ -205,7 +208,7 @@ export default function PlaceOrder() {
                   {t("Send order")}
                 </Btn>
                 <Btn className="w-full" onClick={() => setQty(lastOrderQty(outletId, lines))}>
-                  {t("Start from Friday's order")}
+                  {t("Start from the {w} order", { w: tonight })}
                 </Btn>
                 {total > 0 && (
                   <button onClick={() => setQty({})} className="h-9 w-full text-sm text-mute underline">

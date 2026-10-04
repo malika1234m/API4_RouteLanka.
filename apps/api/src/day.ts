@@ -50,12 +50,22 @@ export async function skipTo(tx: Tx, d: Day, hhmm?: string | null): Promise<Day>
   return { ...d, clock_start: start };
 }
 
-export async function createDay(db: Sql, name: string): Promise<string> {
+/**
+ * A new demo day: a copy of the walkthrough night, or (with `night`) a real night from the order history, whose
+ * plan the engine then proposes.
+ */
+export async function createDay(db: Sql, name: string, night?: string): Promise<string> {
   return db.begin(async (tx) => {
     // Housekeeping: copies of the night older than three days are no longer anyone's walkthrough. A browser
     // still pointing at one falls back to the default day.
     await tx`DELETE FROM workspaces WHERE NOT is_default AND NOT is_template AND created_at < now() - interval '3 days'`;
-    const [r] = await tx<{ id: string }[]>`SELECT clone_template_day(${name}) AS id`;
+    let r: { id: string };
+    try {
+      [r] = night ? await tx<{ id: string }[]>`SELECT create_history_day(${name}, ${night}::date) AS id` : await tx<{ id: string }[]>`SELECT clone_template_day(${name}) AS id`;
+    } catch (e) {
+      if ((e as { code?: string }).code === "P0002") throw new HttpError(400, `No deliveries ran on ${night}. Choose another night.`);
+      throw e;
+    }
     await tx`INSERT INTO events (workspace_id, type, actor_role, text, at, in_feed) VALUES (${r.id}, 'day.created', 'dispatcher', ${`Demo day created: ${name}`}, '03:00', false)`;
     return r.id;
   });

@@ -31,6 +31,52 @@ PERSONAS = dict(
     store=dict(username="malika.out029", name="Malika"),
 )
 
+# One area manager per district: a store manager account that covers every store in that district.
+AREA_MANAGERS = {
+    "Colombo": "Dilani Perera",
+    "Gampaha": "Tharushi Fernando",
+    "Kalutara": "Asanka Silva",
+    "Galle": "Kasun Wijesinghe",
+    "Matara": "Sanduni Gunawardena",
+    "Kurunegala": "Ishara Herath",
+    "Puttalam": "Mohamed Nazeer",
+    "Kandy": "Nadeesha Wickramasinghe",
+    "Matale": "Fathima Rizna",
+    "Kegalle": "Lahiru Bandara",
+    "Nuwara Eliya": "Suresh Kumar",
+    "Badulla": "Chaminda Rathnayake",
+}
+
+
+def area_username(district: str) -> str:
+    return district.lower().replace(" ", "") + ".area"
+
+
+def seed_area_managers(cur, pw: bytes):
+    """Area managers for every district that has stores. Safe to run again: existing accounts are kept."""
+    cur.execute("SELECT DISTINCT district FROM outlets ORDER BY district")
+    added = 0
+    for (district,) in cur.fetchall():
+        name = AREA_MANAGERS.get(district, f"{district} area manager")
+        cur.execute("INSERT INTO users (username, password_hash, role, display_name, district) VALUES (%s,%s,'store',%s,%s) ON CONFLICT (username) DO NOTHING",
+                    [area_username(district), bcrypt.hashpw(pw, bcrypt.gensalt(10)).decode(), name, district])
+        added += cur.rowcount
+    log(f"area managers: {added} added")
+
+
+HISTORY_COLS = ["order_date", "outlet_id", "temp_requirement", "order_units", "order_weight_kg", "order_volume_m3", "dispatch_status"]
+
+
+def seed_order_history(cur, train=None):
+    """The delivery history, so a judge can start a demo day for any past night. Loaded once."""
+    cur.execute("SELECT EXISTS (SELECT 1 FROM order_history)")
+    if cur.fetchone()[0]:
+        return
+    if train is None:
+        train = read("Training Data/deliveries_train.csv")
+    copy_rows(cur, "order_history", HISTORY_COLS, train[HISTORY_COLS].itertuples(index=False))
+    log(f"order history: {len(train)} orders over {train.order_date.nunique()} nights")
+
 
 def log(*a):
     print("[seed]", *a, flush=True)
@@ -150,10 +196,13 @@ def main():
         cur.execute("SELECT count(*) FROM workspaces WHERE is_template")
         if cur.fetchone()[0] and not force:
             log("already seeded; skipping (set SEED_FORCE=1 to rebuild)")
+            # Accounts added in later versions still reach an existing install.
+            seed_area_managers(cur, os.environ.get("SEED_PASSWORD", "routelanka").encode())
+            seed_order_history(cur)
             return
         if force:
             log("SEED_FORCE=1: clearing existing data")
-            cur.execute("TRUNCATE workspaces, users, engine_params, capacity_outlook, outlet_history, road_conditions, calendar, service_allowance, districts, vehicles, outlets, processed_messages CASCADE")
+            cur.execute("TRUNCATE workspaces, users, order_history, engine_params, capacity_outlook, outlet_history, road_conditions, calendar, service_allowance, districts, vehicles, outlets, processed_messages CASCADE")
 
         log("reading datasets from", DATA)
         outlets = read("General Data/outlets.csv")
@@ -183,6 +232,7 @@ def main():
         copy_rows(cur, "calendar", ["date", "dow", "iso_year", "iso_week", "is_payday", "festival", "festival_ramp", "is_holiday", "monsoon", "is_operating"],
                   c[["date", "dow", "iso_year", "iso_week", "is_payday", "festival", "festival_ramp", "is_holiday", "monsoon", "is_operating"]].itertuples(index=False))
         copy_rows(cur, "road_conditions", ["district", "date", "disruption_index"], roads[["district", "date", "disruption_index"]].itertuples(index=False))
+        seed_order_history(cur, train)
 
         log("measuring prediction parameters from the history")
         params = measure_params(train, legs, outlets, traffic)
@@ -243,8 +293,9 @@ def main():
             ("store", PERSONAS["store"], dict(outlet_id=store["outlet_id"])),
         ]
         for role, p, extra in users:
-            cur.execute("INSERT INTO users (username, password_hash, role, display_name, depot, outlet_id, vehicle_id, trip_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            cur.execute("INSERT INTO users (username, password_hash, role, display_name, depot, outlet_id, vehicle_id, trip_id, is_demo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,true)",
                         [p["username"], bcrypt.hashpw(pw, bcrypt.gensalt(10)).decode(), role, p["name"], extra.get("depot"), extra.get("outlet_id"), extra.get("vehicle_id"), extra.get("trip_id")])
+        seed_area_managers(cur, pw)
 
         served = sum(a["decision"] == "served" for a in assignments)
         log(f"done: {len(orders)} orders ({served} served, {len(orders) - served} deferred), {len(trips)} trips; "

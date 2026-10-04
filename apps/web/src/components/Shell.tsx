@@ -18,6 +18,7 @@ const NAV: Record<Role, { href: string; label: string }[]> = {
     { href: "/dispatch/outlook", label: "Capacity outlook" },
     { href: "/dispatch/impact", label: "Impact" },
     { href: "/dispatch/whatsapp", label: "WhatsApp" },
+    { href: "/dispatch/team", label: "Team" },
   ],
   loader: [{ href: "/dock", label: "Dock queue" }],
   driver: [{ href: "/driver", label: "Today's run" }],
@@ -28,11 +29,12 @@ const NAV: Record<Role, { href: string; label: string }[]> = {
   ],
 };
 
+/** The four roles. `who` is the person signed in for that role on this browser (the demo persona until then). */
 export const ROLES: { role: Role; label: string; href: string; who: string; device: string }[] = [
-  { role: "store", label: "Store manager", href: "/store", who: seed.personas.store.name, device: "Desktop / phone" },
-  { role: "dispatcher", label: "Dispatcher", href: "/dispatch", who: seed.personas.dispatcher.name, device: "Large screen" },
-  { role: "loader", label: "Loader", href: "/dock", who: seed.personas.loader.name, device: "Dock tablet" },
-  { role: "driver", label: "Driver", href: "/driver", who: seed.personas.driver.name, device: "Phone" },
+  { role: "store", label: "Store manager", href: "/store", get who() { return seed.personas.store.name; }, device: "Desktop / phone" },
+  { role: "dispatcher", label: "Dispatcher", href: "/dispatch", get who() { return seed.personas.dispatcher.name; }, device: "Large screen" },
+  { role: "loader", label: "Loader", href: "/dock", get who() { return seed.personas.loader.name; }, device: "Dock tablet" },
+  { role: "driver", label: "Driver", href: "/driver", get who() { return seed.personas.driver.name; }, device: "Phone" },
 ];
 
 const WIDTH = { narrow: "max-w-3xl", medium: "max-w-6xl", wide: "max-w-[1440px]" };
@@ -69,14 +71,26 @@ function LangSwitch({ role }: { role: Role }) {
   const cur = s.lang?.[role] ?? "en";
   const i = LANGS.findIndex((l) => l.id === cur);
   const nextLang = LANGS[(i + 1) % LANGS.length];
+  // One change at a time: a second tap before the first is saved would send the same language again.
+  const [busy, setBusy] = useState(false);
+  const change = async (lang: (typeof LANGS)[number]["id"]) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await dispatch({ type: "setLang", role, lang });
+    } catch {
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
-    <button onClick={() => dispatch({ type: "setLang", role, lang: nextLang.id })} aria-label={`Language: ${LANGS[i].name}. Switch to ${nextLang.name}`} className="h-8 rounded-md bg-white/10 px-2 text-xs font-semibold text-white sm:hidden">
+    <button onClick={() => void change(nextLang.id)} disabled={busy} aria-busy={busy} aria-label={`Language: ${LANGS[i].name}. Switch to ${nextLang.name}`} className="h-8 rounded-md bg-white/10 px-2 text-xs font-semibold text-white sm:hidden">
       {LANGS[i].short}
     </button>
     <div role="radiogroup" aria-label="Language" className="hidden rounded-md bg-white/10 p-0.5 sm:flex">
       {LANGS.map((l) => (
-        <button key={l.id} role="radio" aria-checked={cur === l.id} title={l.name} onClick={() => dispatch({ type: "setLang", role, lang: l.id })} className={`h-7 rounded px-1.5 text-xs font-semibold ${cur === l.id ? "bg-hivis text-night" : "text-white/75 hover:text-white"}`}>
+        <button key={l.id} role="radio" aria-checked={cur === l.id} title={l.name} onClick={() => void change(l.id)} disabled={busy} className={`h-7 rounded px-1.5 text-xs font-semibold ${cur === l.id ? "bg-hivis text-night" : "text-white/75 hover:text-white"}`}>
           {l.short}
         </button>
       ))}
