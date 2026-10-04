@@ -84,7 +84,7 @@ export default function OrderQueue() {
         </BtnLink>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="mt-3 grid grid-cols-2 rl-stats sm:grid-cols-3 lg:grid-cols-6">
         {figures.map((x) => (
           <div key={x.k} className="bg-card px-3 py-2">
             <dt className="text-xs text-mute">{x.k}</dt>

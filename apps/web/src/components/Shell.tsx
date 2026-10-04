@@ -260,8 +260,8 @@ export function Shell({
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 bg-night text-white shadow-[0_1px_0_#ffffff14]">
-        <div className={`mx-auto flex h-12 items-center gap-2 px-4 ${w}`}>
+      <header className="rl-header sticky top-0 z-30 text-white">
+        <div className={`mx-auto flex h-14 items-center gap-2 px-4 ${w}`}>
           <Link href={ROLES.find((r) => r.role === role)?.href ?? "/"} aria-label="RouteLanka home" className="mr-1 shrink-0">
             <Wordmark light compact />
           </Link>
@@ -278,11 +278,11 @@ export function Shell({
           </span>
         </div>
         {NAV[role].length > 1 && (
-          <nav className={`mx-auto flex gap-1 overflow-x-auto px-3 ${w}`} aria-label="Sections">
+          <nav className={`mx-auto flex gap-1 overflow-x-auto px-3 pb-2 pt-0.5 ${w}`} aria-label="Sections">
             {NAV[role].map((n) => {
               const active = path === n.href;
               return (
-                <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined} className={`whitespace-nowrap border-b-[3px] px-3 py-2.5 text-sm font-medium ${active ? "border-hivis text-white" : "border-transparent text-white/65 hover:text-white"}`}>
+                <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined} className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${active ? "bg-white/12 text-white shadow-[inset_0_0_0_1px_rgb(255_255_255/0.12)] before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-hivis before:align-middle before:content-['']" : "text-white/65 hover:bg-white/6 hover:text-white"}`}>
                   {t(n.label)}
                 </Link>
               );

@@ -21,6 +21,11 @@
   --color-late: #a8301f;
   --color-late-soft: #fbe7e4;
   --color-amber-soft: #fff4d1;
+  --color-hivis-2: #ffd34d;
+  --color-night-3: #0d1728;
+
+  --shadow-card: 0 1px 2px rgb(22 35 58 / 0.06), 0 4px 16px -6px rgb(22 35 58 / 0.10);
+  --shadow-lift: 0 2px 4px rgb(22 35 58 / 0.08), 0 12px 32px -10px rgb(22 35 58 / 0.25);
 
   --font-sans: var(--font-barlow), var(--font-si), var(--font-ta), system-ui, sans-serif;
   --font-cond: var(--font-barlow-cond), var(--font-barlow), var(--font-si), var(--font-ta), sans-serif;
@@ -30,6 +35,86 @@ html {
   background: var(--color-paper);
   color: var(--color-night);
 }
+
+/* A soft wash behind every screen, so cards float instead of sitting on flat grey. */
+body {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, rgb(245 184 0 / 0.07), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgb(22 99 154 / 0.07), transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+
+/* Header: deep night gradient with a thin hi-vis line, like dock tape. */
+.rl-header {
+  background: linear-gradient(100deg, var(--color-night-3) 0%, var(--color-night) 45%, var(--color-night-2) 100%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06), 0 6px 20px -8px rgb(13 23 40 / 0.6);
+}
+.rl-header::after {
+  content: "";
+  display: block;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-hivis) 20%, var(--color-hivis-2) 50%, var(--color-hivis) 80%, transparent);
+  opacity: 0.55;
+}
+
+/* Figure strips: separate tiles with an accent bar instead of one ruled box. */
+.rl-stats {
+  gap: 10px;
+}
+.rl-stats > * {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(213 219 227 / 0.8);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff 0%, #fbfcfd 100%);
+  box-shadow: var(--shadow-card);
+  padding: 12px 14px 12px 16px !important;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.rl-stats > *::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-night-2);
+  opacity: 0.25;
+}
+.rl-stats > *:has(.text-late)::before { background: var(--color-late); opacity: 0.9; }
+.rl-stats > *:hover { transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+.rl-stats dt { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.rl-stats dd.font-cond { font-size: 1.75rem; line-height: 1.15; margin-top: 2px; }
+
+/* Cards lift slightly on hover when they are links or contain one action. */
+.rl-card {
+  box-shadow: var(--shadow-card);
+}
+a.rl-card:hover { box-shadow: var(--shadow-lift); }
+
+/* Primary action: hi-vis with depth. */
+.rl-primary {
+  background: linear-gradient(180deg, var(--color-hivis-2) 0%, var(--color-hivis) 100%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.5) inset, 0 6px 14px -6px rgb(245 184 0 / 0.8);
+}
+.rl-primary:hover { filter: brightness(1.03); box-shadow: 0 1px 0 rgb(255 255 255 / 0.5) inset, 0 8px 18px -6px rgb(245 184 0 / 0.9); }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+main#main > * { animation: rise 260ms ease-out both; }
+main#main > *:nth-child(2) { animation-delay: 40ms; }
+main#main > *:nth-child(3) { animation-delay: 80ms; }
+main#main > *:nth-child(4) { animation-delay: 120ms; }
+
+/* Route lines that draw themselves (sign-in hero). */
+@keyframes dash { to { stroke-dashoffset: 0; } }
+.rl-draw { stroke-dasharray: 600; stroke-dashoffset: 600; animation: dash 2.4s ease-out forwards; }
+@keyframes pulse-dot { 0%,100% { r: 4; opacity: 1; } 50% { r: 7; opacity: 0.5; } }
+.rl-pulse { animation: pulse-dot 2s ease-in-out infinite; }
 
 body {
   font-family: var(--font-sans);
@@ -107,3 +192,55 @@ a[href]:active {
 
 /* Calm, grey map so status colours carry the meaning. */
 .rl-tiles { filter: grayscale(1) contrast(0.85) brightness(1.08); }
+
+/* ---- App-wide polish: titles, tables, bars ------------------------------------------------- */
+
+/* Page titles carry a short hi-vis bar, like a dock marking. */
+main#main h1.font-cond {
+  position: relative;
+  padding-left: 14px;
+  letter-spacing: -0.01em;
+}
+main#main h1.font-cond::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.18em;
+  bottom: 0.18em;
+  width: 5px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--color-hivis-2), var(--color-hivis));
+  box-shadow: 0 0 12px rgb(245 184 0 / 0.45);
+}
+
+/* Tables: tinted header row and a row highlight that follows the pointer. */
+main#main table thead tr {
+  background: linear-gradient(180deg, #f6f8fa, #eef1f5);
+}
+main#main table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+main#main table tbody tr {
+  transition: background-color 120ms ease;
+}
+main#main table tbody tr:hover {
+  background-color: rgb(245 184 0 / 0.07);
+}
+
+/* Progress bars. */
+.rl-track { overflow: hidden; border-radius: 999px; background: #e3e8ee; box-shadow: inset 0 1px 1px rgb(22 35 58 / 0.08); }
+.rl-fill { background: linear-gradient(90deg, var(--color-night-2), var(--color-night)); }
+.rl-fill-warn { background: linear-gradient(90deg, var(--color-hivis-2), var(--color-hivis)); }
+.rl-fill-late { background: linear-gradient(90deg, #d0452f, var(--color-late)); }
+
+/* Short laptop windows: keep the sign-in hero to what fits. */
+@media (max-height: 760px) {
+  .rl-hero-map { display: none; }
+  .rl-hero-grid { grid-template-columns: 1fr !important; }
+  .rl-hero-title { font-size: 2.6rem !important; }
+  .rl-hero-points { margin-top: 1.25rem !important; }
+}

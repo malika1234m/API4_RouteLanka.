@@ -217,7 +217,7 @@ function OrderCard({ o }: { o: Order }) {
   const showCode = s.published && !st.deferred && !st.receipt && st.stage !== "delivered";
 
   return (
-    <Card className={`p-4 ${st.deferred && s.published ? "border-late/50" : ""}`}>
+    <Card className={`border-l-4 p-4 ${st.deferred && s.published ? "border-late/50 border-l-late" : st.stage === "delivered" || st.receipt ? "border-l-ok" : o.temp_requirement === "chilled" ? "border-l-chill" : "border-l-hivis"}`}>
       <div className="flex items-center gap-2">
         <p className="font-semibold">
           {o.temp_requirement === "chilled" ? t("Chilled order") : o.brand === "Fresh" ? t("Dry goods order") : t("{b} order", { b: o.brand })} · {o.order_units} {unit}

@@ -127,7 +127,7 @@ function LoadProgress({ keyTrip }: { keyTrip: string }) {
   const flagged = os.filter((o) => s.states[o.order_ref].loadFlag && !s.states[o.order_ref].loadDecision).length;
   const vol = os.reduce((a, o) => a + o.order_volume_m3, 0);
   return (
-    <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line text-center">
+    <div className="mt-3 grid grid-cols-3 rl-stats text-center">
       <div className="bg-card px-3 py-2">
         <p className="text-xs text-mute">{t("Loaded")}</p>
         <p className="font-cond text-2xl font-bold">

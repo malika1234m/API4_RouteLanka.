@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { DepotToggle } from "@/components/DepotToggle";
 import { Shell } from "@/components/Shell";
-import { Card, Chip, IconChill } from "@/components/ui";
+import { Chip, EmptyState, IconChill } from "@/components/ui";
 import { loadsFor } from "@/lib/rules";
 import { seed, tripKey } from "@/lib/seed";
 import { useDemo, type DemoState } from "@/lib/store";
@@ -14,6 +14,7 @@ import { useT } from "@/lib/i18n";
 type Status = "flagged" | "loading" | "todo" | "ready" | "left";
 const LABEL: Record<Status, string> = { flagged: "Waiting for dispatcher", loading: "Loading", todo: "Not started", ready: "Ready", left: "Left the dock" };
 const ORDER: Record<Status, number> = { flagged: 0, loading: 1, todo: 2, ready: 3, left: 4 };
+const STRIPE: Record<Status, string> = { flagged: "bg-late", loading: "bg-hivis", todo: "bg-line", ready: "bg-night", left: "bg-ok" };
 
 function statusOf(s: DemoState, k: string, os: Order[]): Status {
   if (s.departed[k]) return "left";
@@ -54,10 +55,9 @@ export default function DockQueue() {
       </div>
 
       {!s.published ? (
-        <Card className="mt-4 p-6 text-center">
-          <p className="font-cond text-2xl font-bold">{t("Tonight's plan isn't published yet")}</p>
-          <p className="mt-1 text-mute">{t("Loading lists appear here as soon as the dispatcher publishes. There's nothing to print.")}</p>
-        </Card>
+        <EmptyState className="mt-4" title={t("Tonight's plan isn't published yet")} icon={<><path d="M8 4h8v3H8z" /><path d="M6 6H5v15h14V6h-1" /><path d="M9 12h6M9 16h4" /></>}>
+          {t("Loading lists appear here as soon as the dispatcher publishes. There's nothing to print.")}
+        </EmptyState>
       ) : (
         <>
           {s.planChangedAt && (
@@ -65,7 +65,7 @@ export default function DockQueue() {
               {t("Plan updated {t} (version {n}). Re-check any vehicle you have already started.", { t: s.planChangedAt, n: s.planVersion })}
             </p>
           )}
-          <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-5">
+          <dl className="mt-3 grid grid-cols-2 rl-stats sm:grid-cols-5">
             {[
               { k: "Trips tonight", v: trips.length, sub: firstOut ? t("next out {t}", { t: firstOut.depart }) : t("all gone") },
               { k: "Not started", v: count("todo") },
@@ -92,7 +92,11 @@ export default function DockQueue() {
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {shown.map(({ v, l, k, depart, status, loaded }) => (
               <li key={k}>
-                <Link href={`/dock/${v.vehicle_id}/${l.trip_id}`} className={`block h-full rounded-lg border bg-card p-4 transition-colors hover:border-night ${status === "flagged" ? "border-late" : k === firstOut?.k ? "border-2 border-night" : "border-line"}`}>
+                <Link href={`/dock/${v.vehicle_id}/${l.trip_id}`} className={`rl-card relative block h-full overflow-hidden rounded-xl border bg-card p-4 pt-5 transition-all hover:-translate-y-0.5 hover:border-night/50 ${status === "flagged" ? "border-late" : k === firstOut?.k ? "border-night ring-2 ring-hivis/60" : "border-line/80"}`}>
+                  <span aria-hidden className={`absolute inset-x-0 top-0 h-1.5 ${STRIPE[status]}`} />
+                  {k === firstOut?.k && (
+                    <span className="absolute right-3 top-0 rounded-b-md bg-hivis px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-night shadow-sm">{t("Next out")}</span>
+                  )}
                   <div className="flex items-center gap-2">
                     <span className="font-cond text-3xl font-bold">{v.vehicle_id}</span>
                     {v.temp === "reefer" && (
@@ -111,8 +115,8 @@ export default function DockQueue() {
                     {t("Departs {t} · {n} stops · {v} m³", { t: depart, n: new Set(l.orders.map((o) => o.stop_seq)).size, v: l.volume.toFixed(1) })}
                   </p>
                   <div className="mt-3 flex items-center gap-2 text-xs">
-                    <div className="h-2 flex-1 overflow-hidden rounded-sm bg-line">
-                      <div className={`h-full ${status === "flagged" ? "bg-late" : "bg-night"}`} style={{ width: `${(loaded / l.orders.length) * 100}%` }} />
+                    <div className="rl-track h-2 flex-1">
+                      <div className={`h-full rounded-full transition-[width] duration-700 ${status === "flagged" ? "rl-fill-late" : status === "left" || status === "ready" ? "bg-ok" : "rl-fill"}`} style={{ width: `${(loaded / l.orders.length) * 100}%` }} />
                     </div>
                     <span className="font-semibold">
                       {loaded}/{l.orders.length}

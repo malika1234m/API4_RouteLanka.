@@ -23,6 +23,9 @@ interface Member {
 }
 
 const ROLE_LABEL: Record<Role, string> = { dispatcher: "Dispatcher", loader: "Loader", driver: "Driver", store: "Store manager" };
+/** Same accents as the sign-in role buttons. */
+const ROLE_TINT: Record<Role, string> = { dispatcher: "bg-night text-hivis", loader: "bg-amber-soft text-hivis-deep", driver: "bg-chill-soft text-chill", store: "bg-ok-soft text-ok" };
+const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 const ROLE_ORDER: Role[] = ["driver", "loader", "store", "dispatcher"];
 const SCOPE_LABEL: Record<Role, string> = { dispatcher: "Depot", loader: "Depot", driver: "Vehicle", store: "Covers" };
 const depots = () => [...new Set(seed.vehicles.map((v) => v.depot))].sort();
@@ -90,7 +93,7 @@ export default function Team() {
         </Btn>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+      <dl className="mt-3 grid grid-cols-2 rl-stats sm:grid-cols-4">
         {ROLE_ORDER.map((r) => {
           const n = active.filter((p) => p.role === r);
           return (
@@ -141,8 +144,15 @@ export default function Team() {
                   {shown.map((p) => (
                     <tr key={p.id} className={`border-t border-line/60 ${panel?.mode === "edit" && panel.id === p.id ? "bg-amber-soft" : ""} ${p.active ? "" : "text-mute"}`}>
                       <td className="px-4 py-2.5">
-                        <span className="block font-semibold">{p.name}</span>
-                        <span className="block font-cond text-sm text-mute">{p.username}</span>
+                        <span className="flex items-center gap-3">
+                          <span className={`grid size-9 shrink-0 place-items-center rounded-full font-cond text-sm font-bold ring-2 ring-white shadow-sm ${p.active ? ROLE_TINT[p.role] : "bg-line text-mute"}`} aria-hidden>
+                            {initials(p.name)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold">{p.name}</span>
+                            <span className="block font-cond text-sm text-mute">{p.username}</span>
+                          </span>
+                        </span>
                       </td>
                       <td className="px-3 py-2.5">{ROLE_LABEL[p.role]}</td>
                       <td className="px-3 py-2.5">{worksOn(p)}</td>

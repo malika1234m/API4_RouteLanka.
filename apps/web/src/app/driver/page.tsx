@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Shell } from "@/components/Shell";
-import { Btn, Card, IconArrow, IconCheck, IconChill, IconNoSignal, IconOutbox, IconSignal, OrderMarks } from "@/components/ui";
+import { Btn, Card, EmptyState, IconArrow, IconCheck, IconChill, IconNoSignal, IconOutbox, IconSignal, OrderMarks } from "@/components/ui";
 import { driverState } from "@/lib/driver";
 import { outletById, seed, tripKey } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
@@ -229,10 +229,9 @@ export default function TodaysRun() {
         </div>
       )}
       {!s.published ? (
-        <Card className="mt-4 p-4">
-          <p className="font-semibold">{t("Your run isn't published yet.")}</p>
-          <p className="text-mute">{t("It downloads to this phone as soon as the dispatcher publishes. You won't need signal after that.")}</p>
-        </Card>
+        <EmptyState className="mt-4" title={t("Your run isn't published yet.")} icon={<><path d="M12 4v10M8 10l4 4 4-4" /><path d="M5 16v3h14v-3" /></>}>
+          {t("It downloads to this phone as soon as the dispatcher publishes. You won't need signal after that.")}
+        </EmptyState>
       ) : (
         <>
           {!s.departed[k] && (

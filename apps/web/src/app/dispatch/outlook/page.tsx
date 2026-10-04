@@ -71,7 +71,7 @@ export default function Outlook() {
         </div>
       </div>
 
-      <dl className="mt-3 grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
+      <dl className="mt-3 grid rl-stats sm:grid-cols-3">
         {tiles.map((x) => (
           <div key={x.k} className="bg-card px-4 py-3">
             <dt className="text-xs text-mute">{x.k}</dt>
@@ -165,6 +165,14 @@ function DepotChart({ depot, weeks, mixed }: { depot: string; weeks: OutlookWeek
       <p className={`text-sm ${sum.bad ? "font-semibold text-late" : "text-mute"}`}>{sum.text}</p>
       <div className="relative mt-2">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${depot}: chilled orders each week against what the refrigerated trucks can carry. ${sum.text}`}>
+          <defs>
+            {([["ok", OK], ["over", OVER], ["tight", TIGHT]] as const).map(([id, c]) => (
+              <linearGradient key={id} id={`bar-${id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor={c} stopOpacity={0.95} />
+                <stop offset="1" stopColor={c} stopOpacity={0.7} />
+              </linearGradient>
+            ))}
+          </defs>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#E4E8EE" strokeWidth={1} />
@@ -192,7 +200,7 @@ function DepotChart({ depot, weeks, mixed }: { depot: string; weeks: OutlookWeek
                 aria-label={`Week of ${weekStart(w.iso_year, w.iso_week)}: ${w.chilled} m³ chilled, trucks carry ${w.chilled_capacity} m³${over ? `, ${Math.round(w.chilled - w.chilled_capacity)} m³ over` : ""}`}
               >
                 <rect x={L + band * i} y={T} width={band} height={H - T - B} fill={hover === i ? "#F2F4F7" : "transparent"} />
-                <path d={roundTop(cx - bw / 2, top, bw, base - top, 4)} fill={over ? OVER : isTight(w) ? TIGHT : OK} opacity={mixed && !w.actual ? 0.45 : 1} />
+                <path d={roundTop(cx - bw / 2, top, bw, base - top, 4)} fill={`url(#bar-${over ? "over" : isTight(w) ? "tight" : "ok"})`} opacity={mixed && !w.actual ? 0.45 : 1} style={{ filter: hover === i ? "drop-shadow(0 4px 8px rgb(22 35 58 / 0.25))" : undefined, transition: "filter 150ms" }} />
                 {/* What the trucks can carry that week (it follows the operating days). */}
                 <line x1={L + band * i + 2} x2={L + band * (i + 1) - 2} y1={y(w.chilled_capacity)} y2={y(w.chilled_capacity)} stroke={INK} strokeWidth={2} />
                 {over && (

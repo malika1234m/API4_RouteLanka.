@@ -55,7 +55,7 @@ export default function Fleet() {
         <DepotToggle depot={depot} onChange={setDepot} />
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+      <dl className="mt-3 grid grid-cols-2 rl-stats sm:grid-cols-4">
         {[
           { k: "Refrigerated vehicles running", v: `${reefersUp.length} of ${reefers.length}`, sub: `${reefers.length - reefersUp.length} in the workshop`, bad: reefersUp.length < reefers.length },
           { k: "Vehicles in the workshop", v: workshop.length, sub: `${workshop.filter((v) => v.temp === "reefer").length} of them refrigerated` },

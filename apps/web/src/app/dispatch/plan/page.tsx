@@ -132,7 +132,7 @@ export default function PlanBoard() {
         </Btn>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="mt-3 grid grid-cols-2 rl-stats sm:grid-cols-3 lg:grid-cols-6">
         {kpis.map((x) => (
           <div key={x.k} className="bg-card px-3 py-2">
             <dt className="text-xs text-mute">{x.k}</dt>
@@ -304,7 +304,7 @@ function VehicleCard({ vid, orders, dnd, routeOpen, onRoute }: { vid: string; or
   const u = vehicleUse(v, loads);
   const bad = violations(v, orders);
   return (
-    <Card className={`p-3 ${bad.length ? "border-late" : ""}`}>
+    <Card className={`border-t-4 p-3 ${v.temp === "reefer" ? "border-t-chill bg-[linear-gradient(180deg,var(--color-chill-soft)_0,transparent_56px)]" : "border-t-night-2/30 bg-[linear-gradient(180deg,#f3f5f8_0,transparent_56px)]"} ${bad.length ? "border-late" : ""}`}>
       <div className="flex items-center gap-2">
         <span className="font-cond text-xl font-bold">{v.vehicle_id}</span>
         <Chip tone={v.temp === "reefer" ? "chill" : "neutral"}>

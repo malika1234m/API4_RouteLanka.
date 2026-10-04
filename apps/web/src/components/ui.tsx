@@ -33,9 +33,9 @@ export function RelayTrack({ st, pending = false, compact = false, t = same }: {
         {STAGES.map((s, i) => {
           let cls = "bg-line";
           if (st?.deferred && i === 1) cls = "bg-late";
-          else if (!st?.deferred && i <= idx) cls = issue && i === idx ? "bg-late" : i === idx ? "bg-hivis" : "bg-night";
+          else if (!st?.deferred && i <= idx) cls = issue && i === idx ? "bg-late" : i === idx ? "rl-fill-warn shadow-[0_0_10px_rgb(245_184_0/0.7)]" : "rl-fill";
           else if (pending && i === idx + 1) cls = "hatch";
-          return <span key={s} className={`${compact ? "h-1.5" : "h-2"} flex-1 rounded-[2px] ${cls}`} />;
+          return <span key={s} className={`${compact ? "h-1.5" : "h-2"} flex-1 rounded-full ${cls}`} />;
         })}
       </div>
       {!compact && (
@@ -62,7 +62,7 @@ const TONE: Record<Tone, string> = {
 };
 
 export function Chip({ tone = "neutral", children, className = "" }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-xs font-medium ${TONE[tone]} ${className}`}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${TONE[tone]} ${className}`}>{children}</span>;
 }
 
 export function stageChip(st?: OrderState, t: Tr = same) {
@@ -78,7 +78,7 @@ export function stageChip(st?: OrderState, t: Tr = same) {
 /** Used vs capacity. Turns red past 100%, amber past 90%. */
 export function Meter({ label, used, cap, unit, big = false }: { label: string; used: number; cap: number; unit: string; big?: boolean }) {
   const pct = cap ? used / cap : 0;
-  const color = pct > 1 ? "bg-late" : pct > 0.9 ? "bg-hivis" : "bg-night";
+  const color = pct > 1 ? "rl-fill-late" : pct > 0.9 ? "rl-fill-warn" : "rl-fill";
   return (
     <div className="min-w-0">
       <div className="flex items-baseline justify-between gap-2 text-xs">
@@ -88,8 +88,8 @@ export function Meter({ label, used, cap, unit, big = false }: { label: string; 
           <span className="text-mute font-normal"> / {fmtNum(cap)} {unit}</span>
         </span>
       </div>
-      <div className={`mt-1 ${big ? "h-2.5" : "h-1.5"} rounded-sm bg-line overflow-hidden`}>
-        <div className={`h-full ${color}`} style={{ width: `${Math.min(pct, 1) * 100}%` }} />
+      <div className={`rl-track mt-1 ${big ? "h-2.5" : "h-1.5"}`}>
+        <div className={`h-full rounded-full transition-[width] duration-700 ease-out ${color}`} style={{ width: `${Math.min(pct, 1) * 100}%` }} />
       </div>
     </div>
   );
@@ -100,20 +100,20 @@ const fmtNum = (n: number) => (Math.abs(n) >= 100 ? Math.round(n).toLocaleString
 type BtnProps = ComponentProps<"button"> & { variant?: "primary" | "secondary" | "danger" | "ghost"; size?: "md" | "lg" | "xl" };
 export function Btn({ variant = "secondary", size = "md", className = "", ...p }: BtnProps) {
   const v = {
-    primary: "bg-hivis text-night hover:brightness-95 border-hivis",
-    secondary: "bg-card text-night border-line hover:border-night",
+    primary: "rl-primary text-night border-hivis",
+    secondary: "bg-card text-night border-line shadow-sm hover:border-night/60 hover:shadow",
     danger: "bg-card text-late border-late/40 hover:bg-late-soft",
     ghost: "bg-transparent text-night border-transparent hover:bg-night/5",
   }[variant];
   const s = { md: "h-9 px-3 text-sm", lg: "h-12 px-4 text-base", xl: "h-16 px-5 text-lg" }[size];
-  return <button {...p} className={`inline-flex items-center justify-center gap-2 rounded-md border font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none ${v} ${s} ${className}`} />;
+  return <button {...p} className={`inline-flex items-center justify-center gap-2 rounded-lg border font-semibold transition-all disabled:opacity-40 disabled:pointer-events-none ${v} ${s} ${className}`} />;
 }
 
 export function BtnLink({ href, variant = "secondary", size = "md", className = "", children }: { href: string; variant?: BtnProps["variant"]; size?: BtnProps["size"]; className?: string; children: ReactNode }) {
-  const v = { primary: "bg-hivis text-night border-hivis", secondary: "bg-card text-night border-line hover:border-night", danger: "bg-card text-late border-late/40", ghost: "text-night border-transparent hover:bg-night/5" }[variant];
+  const v = { primary: "rl-primary text-night border-hivis", secondary: "bg-card text-night border-line shadow-sm hover:border-night/60 hover:shadow", danger: "bg-card text-late border-late/40", ghost: "text-night border-transparent hover:bg-night/5" }[variant];
   const s = { md: "h-9 px-3 text-sm", lg: "h-12 px-4 text-base", xl: "h-16 px-5 text-lg" }[size];
   return (
-    <Link href={href} className={`inline-flex items-center justify-center gap-2 rounded-md border font-semibold ${v} ${s} ${className}`}>
+    <Link href={href} className={`inline-flex items-center justify-center gap-2 rounded-lg border font-semibold transition-all ${v} ${s} ${className}`}>
       {children}
     </Link>
   );
@@ -152,5 +152,20 @@ export function OrderMarks({ o, className = "size-4" }: { o: { temp_requirement:
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-lg border border-line bg-card ${className}`}>{children}</div>;
+  return <div className={`rl-card rounded-xl border border-line/80 bg-card ${className}`}>{children}</div>;
+}
+
+/** A waiting or empty screen: icon in a soft ring, a title and one line of what happens next. */
+export function EmptyState({ icon, title, children, className = "" }: { icon: ReactNode; title: ReactNode; children?: ReactNode; className?: string }) {
+  return (
+    <Card className={`flex flex-col items-center px-6 py-10 text-center ${className}`}>
+      <span className="grid size-16 place-items-center rounded-2xl bg-amber-soft text-hivis-deep ring-8 ring-hivis/10">
+        <svg viewBox="0 0 24 24" className="size-8" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          {icon}
+        </svg>
+      </span>
+      <p className="mt-4 font-cond text-2xl font-bold leading-tight">{title}</p>
+      {children && <p className="mx-auto mt-1.5 max-w-sm text-mute">{children}</p>}
+    </Card>
+  );
 }

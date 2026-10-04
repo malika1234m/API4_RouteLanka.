@@ -29,6 +29,9 @@ const LINES: Record<string, Line[]> = {
   ],
 };
 
+/** A picture for each line, so the form scans by shape before reading. */
+const LINE_ICON: Record<string, string> = { dry: "🌾", bev: "🥤", dairy: "🥛", meat: "🐟", produce: "🥬", hang: "👔", carton: "📦", large: "🧊", small: "📱" };
+
 const subscribeClock = (cb: () => void) => {
   const t = setInterval(cb, 30000);
   return () => clearInterval(t);
@@ -156,8 +159,11 @@ export default function PlaceOrder() {
                 {temp === "chilled" && <p className="text-sm text-mute">{t("Travels separately on a refrigerated vehicle.")}</p>}
                 <ul className="mt-3 divide-y divide-line">
                   {ls.map((l) => (
-                    <li key={l.key} className="flex items-center gap-3 py-2">
-                      <span className="flex-1">{t(l.label)}</span>
+                    <li key={l.key} className={`-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 transition-colors ${(qty[l.key] ?? 0) > 0 ? "bg-amber-soft/70" : ""}`}>
+                      <span aria-hidden className={`grid size-10 shrink-0 place-items-center rounded-xl text-xl shadow-sm ring-1 ring-line/70 ${temp === "chilled" ? "bg-chill-soft" : "bg-paper"}`}>
+                        {LINE_ICON[l.key]}
+                      </span>
+                      <span className="flex-1 font-medium">{t(l.label)}</span>
                       <Btn className="!h-11 !w-11 sm:!h-9 sm:!w-9" onClick={() => setQty((q) => ({ ...q, [l.key]: Math.max(0, (q[l.key] ?? 0) - 1) }))} aria-label={`Fewer ${l.label}`}>
                         −
                       </Btn>
@@ -166,7 +172,7 @@ export default function PlaceOrder() {
                         aria-label={`${l.label} quantity`}
                         value={qty[l.key] ?? 0}
                         onChange={(e) => setQty((q) => ({ ...q, [l.key]: Math.max(0, parseInt(e.target.value || "0", 10) || 0) }))}
-                        className="h-11 w-16 rounded-md border border-line text-center font-cond text-lg sm:h-9"
+                        className="h-11 w-16 rounded-lg border border-line bg-card text-center font-cond text-lg outline-none transition focus:border-night focus:ring-4 focus:ring-hivis/30 sm:h-9"
                       />
                       <Btn className="!h-11 !w-11 sm:!h-9 sm:!w-9" onClick={() => setQty((q) => ({ ...q, [l.key]: (q[l.key] ?? 0) + 1 }))} aria-label={`More ${l.label}`}>
                         +
