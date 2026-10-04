@@ -170,8 +170,11 @@ Event-driven services around one shared PostgreSQL record, connected through Rab
 | `db/migrations` | Database schema |
 | `tests` | End-to-end and smoke tests |
 
-More detail: [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [WhatsApp](docs/whatsapp.md) ·
+More detail: [architecture](docs/architecture.md) · [data model](docs/data-model.md) ·
 [AI disclosure](docs/ai-disclosure.md)
+
+**AI use:** we used Claude Code as a coding assistant. The team designed the architecture, wrote part of the code,
+reviewed all of it and did all the testing. See the [AI disclosure](docs/ai-disclosure.md) for the details.
 
 ## Configuration
 

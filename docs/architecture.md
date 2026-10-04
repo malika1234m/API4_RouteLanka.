@@ -7,42 +7,28 @@ the "relay" from the Designathon design, implemented as an event-driven service 
 ## Components
 
 ```mermaid
-flowchart LR
-  subgraph Browser["Browsers and phones"]
-    WEB["Web app (Next.js)<br/>dispatcher · loader · driver · store<br/>service worker + IndexedDB outbox"]
-  end
+flowchart TB
+  WEB["<b>Web app</b> (Next.js)<br/>dispatcher · loader · driver · store<br/>service worker + IndexedDB outbox"]
+  API["<b>API service</b> (Fastify, TypeScript)<br/>auth: accounts, JWT cookie, role and scope guard<br/>command handlers (shared operating rules) · queries<br/>realtime (server-sent events) · outbox relay"]
+  WA["<b>WhatsApp Cloud API</b><br/>Meta, or the bundled simulator"]
+  MQ{{"<b>RabbitMQ</b><br/>routelanka.events (topic)<br/>routelanka.commands (direct)<br/>dead-letter exchange"}}
+  DB[("<b>PostgreSQL</b><br/>reference data · orders · plans<br/>progress · events (outbox)")]
+  SEED["<b>Seed job</b> (Python, one-shot)<br/>migrations + datasets"]
+  ENGINE["<b>Planning engine</b> (Python worker)<br/>allocation · stop order · ETAs"]
+  NOTIFY["<b>Notifier</b> (TypeScript worker)<br/>WhatsApp and SMS messages"]
 
-  subgraph Core["API service (Fastify, TypeScript)"]
-    AUTH["Auth: staff accounts,<br/>JWT cookie, role and scope guard"]
-    CMD["Command handlers<br/>(validate with the shared rules)"]
-    QRY["Query / view model"]
-    SSE["Realtime: server-sent events"]
-    RELAY["Outbox relay"]
-  end
-
-  DB[("PostgreSQL<br/>reference data · orders · plans<br/>progress · events (outbox)")]
-  MQ{{"RabbitMQ<br/>routelanka.events (topic)<br/>routelanka.commands (direct)<br/>dead-letter exchange"}}
-
-  ENGINE["Planning engine worker (Python)<br/>allocation · stop sequence · ETAs"]
-  NOTIFY["Notifier worker (TypeScript)<br/>WhatsApp and SMS messages"]
-  SEED["Seed job (Python)<br/>datasets → PostgreSQL"]
-  WA["WhatsApp Cloud API<br/>(Meta, or the bundled simulator)"]
-
-  WEB -- "HTTPS: commands, queries, /sync" --> Core
-  SSE -- "event stream" --> WEB
-  CMD -- "one transaction: state + event" --> DB
-  QRY --> DB
-  RELAY -- "poll unpublished events" --> DB
-  RELAY -- "publish with confirms" --> MQ
+  WEB -- "HTTPS: commands, queries, /sync" --> API
+  API -- "live updates (SSE)" --> WEB
+  WA -- "signed webhooks" --> API
+  API -- "state + event,<br/>one transaction" --> DB
+  SEED --> DB
+  API <-- "publish events /<br/>events for live updates" --> MQ
   MQ -- "plan.propose" --> ENGINE
   ENGINE -- "plan.proposed" --> MQ
-  ENGINE --> DB
   MQ -- "domain events" --> NOTIFY
-  NOTIFY --> DB
-  NOTIFY -- "send (templates, reply buttons)" --> WA
-  WA -- "signed webhooks: statuses, taps" --> Core
-  MQ -- "all events (per API instance)" --> SSE
-  SEED --> DB
+  ENGINE -- "plan" --> DB
+  NOTIFY -- "messages" --> DB
+  NOTIFY -- "send" --> WA
 ```
 
 | Component | Responsibility | Why it is separate |
@@ -51,7 +37,7 @@ flowchart LR
 | **API service** (`apps/api`) | Sign-in, role checks, every command (publish, load, deliver, …) and every query. Writes state and the matching event in one transaction. | The single place that enforces the operating rules and owns the database. |
 | **Planning engine** (`services/engine`) | Proposes the allocation: orders → vehicles and trips, deferrals with reasons, stop order, predicted arrival. | CPU-bound and written in Python (the same engine validated with the organisers' `check_allocation.py`). Runs as a queue worker so a slow plan never blocks the API. |
 | **Notifier** (`services/notifier`) | Turns domain events into store messages (WhatsApp) and driver SMS, in each person's language. | Messaging is a side effect. If it is slow or down, planning and delivery keep working; messages catch up. |
-| **WhatsApp** (`services/notifier/src/whatsapp.ts`, `apps/api/src/whatsapp.ts`, `services/wa-sim`) | Sends store messages through the WhatsApp Business Platform. Signed webhooks bring back delivery ticks and one-tap replies, which run as normal commands. A Cloud API simulator plays Meta for the demo; see [whatsapp.md](whatsapp.md). | The messages table is an outbox, so WhatsApp being slow or down never blocks planning; the webhook is a public endpoint and is guarded by signatures, de-duplication and per-store scope. |
+| **WhatsApp** (`services/notifier/src/whatsapp.ts`, `apps/api/src/whatsapp.ts`, `services/wa-sim`) | Sends store messages through the WhatsApp Business Platform. Signed webhooks bring back delivery ticks and one-tap replies, which run as normal commands. A Cloud API simulator plays Meta for the demo. | The messages table is an outbox, so WhatsApp being slow or down never blocks planning; the webhook is a public endpoint and is guarded by signatures, de-duplication and per-store scope. |
 | **Seed job** (`services/engine`, `seed` command) | Loads the shared datasets and one realistic delivery day on a fresh install. | Runs once at start-up, then exits. |
 | **PostgreSQL** | The shared record. | |
 | **RabbitMQ** | Carries commands to workers and fans events out to every consumer. | Decouples the roles: the loader's flag reaches the dispatcher, the notifier and every open screen without the API calling each of them. |
@@ -110,34 +96,31 @@ the other services wait for it.
 ```mermaid
 flowchart TB
   user(["Browsers and phones"])
+  data[/"./data (datasets, read-only)"/]
   subgraph host["Docker Compose"]
-    web["web · Next.js<br/>:3000"]
-    api["api · Fastify<br/>:4000"]
+    web["web · Next.js :3000"]
+    seed["seed · one-shot<br/>migrations + datasets"]
+    pg[("postgres 16<br/>volume pgdata")]
+    api["api · Fastify :4000"]
+    mq{{"rabbitmq 3.13<br/>:5672, console :15672"}}
     engine["engine · Python worker"]
     notifier["notifier · Node worker"]
-    seed["seed · one-shot<br/>migrations + datasets"]
-    wasim["wa-sim · Cloud API simulator<br/>:3200"]
-    pg[("postgres 16<br/>volume pgdata")]
-    mq{{"rabbitmq 3.13<br/>:5672, console :15672"}}
+    wasim["wa-sim · WhatsApp Cloud API simulator :3200<br/>(Meta's real Cloud API when WHATSAPP_MODE=cloud)"]
   end
-  data[/"./data (datasets, read-only)"/]
-  meta["Meta WhatsApp Cloud API<br/>(when WHATSAPP_MODE=cloud)"]
 
   user --> web
+  data --> seed
+  seed --> pg
   web -- "/api/* proxied" --> api
   web -- "/wa-sim proxied" --> wasim
   api --> pg
   api <--> mq
-  engine <--> mq
+  mq <--> engine
+  mq <--> notifier
   engine --> pg
-  notifier <--> mq
   notifier --> pg
   notifier -- "send" --> wasim
-  notifier -. "send" .-> meta
   wasim -- "signed webhooks" --> api
-  meta -. "signed webhooks" .-> api
-  seed --> pg
-  data --> seed
 ```
 
 ## How a decision travels (example: the loader flags missing crates)
