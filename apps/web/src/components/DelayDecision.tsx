@@ -6,7 +6,7 @@ import { delayedEta, heldUp } from "@/lib/delay";
 import { compatibleSwap } from "@/lib/monitor";
 import { DELAY_REASONS, disrupted, extraMinutes } from "@/lib/roads";
 import { runFor, runKey } from "@/lib/runs";
-import { vehicleById } from "@/lib/seed";
+import { seed, vehicleById } from "@/lib/seed";
 import { useDemo } from "@/lib/store";
 import type { Order } from "@/lib/types";
 
@@ -20,8 +20,12 @@ export function RoadBanner({ compact = false }: { compact?: boolean }) {
   const ex = DISRUPTED.map(([, v]) => extraMinutes(v) - extraMinutes(100));
   return (
     <div className={`rounded-md border border-hivis/60 bg-amber-soft px-3 py-2 text-sm ${compact ? "" : "mt-3"}`} role="status">
-      <span className="font-semibold text-hivis-deep">Monsoon day: roads disrupted in {DISRUPTED.map(([d, v]) => `${d} (${v})`).join(", ")}.</span>{" "}
-      <span>On days like this, legs there run {Math.min(...ex)} to {Math.max(...ex)} min longer than usual. Road index from road_conditions.csv; 100 is normal.</span>
+      <span className="font-semibold text-hivis-deep">
+        {seed.meta.monsoon ? "Monsoon: roads" : "Roads"} disrupted in {DISRUPTED.map(([d, v]) => `${d} (${v})`).join(", ")}.
+      </span>{" "}
+      <span>
+        Legs there run {Math.min(...ex)} to {Math.max(...ex)} min longer than usual (road index; 100 is normal).
+      </span>
     </div>
   );
 }
@@ -141,7 +145,6 @@ export function DelayDecision({ vid: forVid }: { vid?: string }) {
 
       {!told ? (
         <>
-          <p className="mt-2 text-xs text-mute">Suggested: deliver late and let the store decide (it can reply “send tomorrow”); move only the last stop to a truck that can reach it; send back chilled goods that would arrive more than an hour after opening.</p>
           <Btn variant="primary" className="mt-2 w-full" onClick={confirm} disabled={!pending.length}>
             Confirm and tell the stores
           </Btn>

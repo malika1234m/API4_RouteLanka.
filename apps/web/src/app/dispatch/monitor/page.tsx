@@ -90,7 +90,6 @@ export default function LiveRuns() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h1 className="font-cond text-2xl font-bold leading-tight">Live runs</h1>
-          <p className="text-sm text-mute">Progress comes from stop check-ins on drivers&apos; phones. Where a phone has no signal you see its last contact, not a guess.</p>
         </div>
         <Legend />
       </div>

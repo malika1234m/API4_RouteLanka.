@@ -320,7 +320,6 @@ export default function MapPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h1 className="font-cond text-2xl font-bold leading-tight">Check-in map</h1>
-          <p className="text-sm text-mute">Each vehicle is shown where it last checked in, never a guessed live position. Faded means no signal: that is the last place we heard from it.</p>
         </div>
         <DepotToggle depot={depot} onChange={(d) => { setDepot(d); setSelected(undefined); }} />
       </div>

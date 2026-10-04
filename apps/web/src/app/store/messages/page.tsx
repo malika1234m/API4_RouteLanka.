@@ -75,7 +75,6 @@ export default function Messages() {
         <h1 className="font-cond text-3xl font-bold">{t("Messages")}</h1>
         <OutletPicker id={outletId} onChange={setOutlet} />
       </div>
-      <p className="mt-1 text-sm text-mute">{t("Messages are sent in the store's chosen language. No app to install: outlet staff change often.")}</p>
 
       <WhatsAppConnect outlet={outletId} onConnected={() => setReload((n) => n + 1)} />
 

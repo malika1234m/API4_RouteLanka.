@@ -9,19 +9,8 @@ export const ASSUME = {
   hireM3: 30, // m³, a typical hired refrigerated truck
   crateValue: 2800, // Rs, average retail value of a chilled crate
   lossShare: 0.18, // share of a deferred chilled crate's value lost (spoilage, empty shelf)
-  subscriptionPerVehicle: 2500, // Rs per vehicle per month, RouteLanka price
 };
 
-/** Baselines measured from two years of Waypoint's delivery history (Jan 2024 to Oct 2025). */
-export const BASELINE = {
-  lateShare: 19.6, // % of attempted deliveries arriving after the window closed
-  deferralNights: 44.9, // % of operating days with at least one deferred or unrun order
-  deferralsPerBadNight: 6.6,
-  repeatSkipShare: 33, // % of deferrals hitting an outlet deferred two days earlier
-  chilledShare: 98.6, // % of deferred orders that were chilled Fresh
-  deferredTotal: 1956,
-  operatingDays: 659,
-};
 
 export const fmtRs = (n: number) => `Rs ${Math.round(n).toLocaleString("en-LK")}`;
 

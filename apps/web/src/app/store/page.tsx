@@ -107,7 +107,7 @@ function DeliveryRecord({ outletId }: { outletId: string }) {
 
 function Glance({ outletId }: { outletId: string }) {
   const { s } = useDemo();
-  const { t } = useT("store");
+  const { t, lang } = useT("store");
   const outlet = outletById.get(outletId)!;
   const orders = s.orders.filter((o) => o.outlet_id === outletId);
   const coming = orders.filter((o) => o.decision === "served");
@@ -118,7 +118,7 @@ function Glance({ outletId }: { outletId: string }) {
     ["Receiving window", `${outlet.window_open_time}–${outlet.window_close_time}${outlet.mall_window ? ` (${t("mall bay {w}", { w: outlet.mall_window })})` : ""}`],
     ["First arrival", s.published && first ? `${first.pred_window}${(first.pred_late_prob ?? 0) >= 0.5 ? t(", likely late") : ""}` : t("After the plan is published")],
     ["Orders coming", s.published ? t("{a} of {b}", { a: coming.length, b: orders.length }) : t("{n} confirmed", { n: orders.length })],
-    ["Deferred", s.published ? (deferred.length ? t("{n}, arriving Sat 25 Apr", { n: deferred.length }) : t("None")) : "—"],
+    ["Deferred", s.published ? (deferred.length ? t("{n}, arriving {d}", { n: deferred.length, d: dateLabel(lang, s.day.next_runs?.[0] ?? seed.next_runs[0]) }) : t("None")) : "—"],
     ["Unloading", t({ rear_dock: "Rear dock", street: "Curbside", mall_bay: "Shared mall bay" }[outlet.dock_type])],
   ];
   return (
@@ -147,7 +147,6 @@ function Glance({ outletId }: { outletId: string }) {
           {t("Updates by WhatsApp")}
         </p>
         <WhatsAppStatus outlet={outletId} />
-        <p className="mt-1 text-xs text-mute">{t("Messages are sent in the store's chosen language. No app to install: outlet staff change often.")}</p>
         <BtnLink href="/store/messages" className="mt-3 w-full">
           {t("Open messages")}
         </BtnLink>

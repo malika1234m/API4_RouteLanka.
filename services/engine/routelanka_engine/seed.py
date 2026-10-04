@@ -64,18 +64,35 @@ def seed_area_managers(cur, pw: bytes):
     log(f"area managers: {added} added")
 
 
-HISTORY_COLS = ["order_date", "outlet_id", "temp_requirement", "order_units", "order_weight_kg", "order_volume_m3", "dispatch_status"]
+HISTORY_COLS = ["order_date", "outlet_id", "temp_requirement", "order_units", "order_weight_kg", "order_volume_m3", "dispatch_status", "state", "late_min"]
 
 
-def seed_order_history(cur, train=None):
-    """The delivery history, so a judge can start a demo day for any past night. Loaded once."""
-    cur.execute("SELECT EXISTS (SELECT 1 FROM order_history)")
-    if cur.fetchone()[0]:
+def order_outcomes(train, legs) -> pd.DataFrame:
+    """Each order with its outcome: on time, late (minutes after the window closed) or missed."""
+    hj = train.merge(legs[["route_id", "seq", "arrival_time"]], left_on=["route_id", "seq_in_route"], right_on=["route_id", "seq"], how="left")
+    arr = hj.arrival_time.map(lambda x: hm(x) if isinstance(x, str) else np.nan)
+    hj["state"] = np.where(hj.dispatch_status != "attempted", "missed", np.where(arr > hj.window_close_time.map(hm), "late", "on_time"))
+    hj["late_min"] = (arr - hj.window_close_time.map(hm)).where(hj.state == "late")
+    return hj
+
+
+def seed_order_history(cur, train=None, legs=None):
+    """The delivery history with each order's outcome, so a judge can start a demo day for any past night and
+    stores see their record as it stood that night. Loaded once (again if an older install lacks outcomes)."""
+    cur.execute("SELECT EXISTS (SELECT 1 FROM order_history), EXISTS (SELECT 1 FROM order_history WHERE state IS NULL)")
+    loaded, missing = cur.fetchone()
+    if loaded and not missing:
         return
+    if loaded:
+        cur.execute("TRUNCATE order_history")
     if train is None:
         train = read("Training Data/deliveries_train.csv")
-    copy_rows(cur, "order_history", HISTORY_COLS, train[HISTORY_COLS].itertuples(index=False))
-    log(f"order history: {len(train)} orders over {train.order_date.nunique()} nights")
+    if legs is None:
+        legs = read("Training Data/route_legs_train.csv")
+    hj = order_outcomes(train, legs)
+    rows = ((*r[:-1], None if pd.isna(r[-1]) else int(r[-1])) for r in hj[HISTORY_COLS].itertuples(index=False))
+    copy_rows(cur, "order_history", HISTORY_COLS, rows)
+    log(f"order history: {len(hj)} orders over {hj.order_date.nunique()} nights, with outcomes")
 
 
 def log(*a):
@@ -103,7 +120,7 @@ def measure_params(train, legs, outlets, traffic) -> dict:
     units = dd.groupby(["brand", "temp_requirement"]).order_units.median()
     late = dd.assign(late=dd.arrival_time.map(hm) > dd.window_close_time.map(hm)).groupby("district").late.mean()
     # Each outlet's own handling time, shrunk towards its brand and dock type when it has few visits (n/(n+20)).
-    # The outlet is the strongest single predictor (Datathon Task 1): error 4.7 min against 6.2 for brand+dock.
+    # The outlet is the strongest single predictor: error 4.7 min against 6.2 for brand+dock.
     g = dd.groupby("outlet_id")
     n, own = g.size(), g.svc.median()
     prior = g.apply(lambda t: svc[(t.brand.iloc[0], t.dock_type.iloc[0])], include_groups=False)
@@ -122,11 +139,9 @@ def measure_params(train, legs, outlets, traffic) -> dict:
 
 
 def outlet_history(train, legs) -> dict:
-    """Each outlet's last 90 orders on file: on time, late or missed, for the store manager's screen."""
-    hj = train.merge(legs[["route_id", "seq", "arrival_time"]], left_on=["route_id", "seq_in_route"], right_on=["route_id", "seq"], how="left")
-    arr = hj.arrival_time.map(lambda x: hm(x) if isinstance(x, str) else np.nan)
-    hj["state"] = np.where(hj.dispatch_status != "attempted", "missed", np.where(arr > hj.window_close_time.map(hm), "late", "on_time"))
-    hj["late_min"] = (arr - hj.window_close_time.map(hm)).where(hj.state == "late")
+    """Each outlet's last 90 orders on file: on time, late or missed (the walkthrough night's record; other nights
+    are computed by the API from order_history as they stood that night)."""
+    hj = order_outcomes(train, legs)
     out = {}
     for oid, g in hj.sort_values("order_date").groupby("outlet_id"):
         last = g.tail(90)
@@ -139,31 +154,56 @@ def outlet_history(train, legs) -> dict:
 
 
 def capacity_outlook(train, t1, cal) -> list:
-    """Ten weeks ahead from the demo day, per depot: the Datathon demand model's forecast of total and chilled
-    volume, against the chilled volume the refrigerated fleet has actually moved on its busiest days."""
+    """Every calendar week, per depot: the demand model's forecast of total and chilled volume, the volume the stores
+    actually ordered (weeks in the delivery history), and the chilled volume the refrigerated fleet has actually
+    moved on its busiest days. The API shows the ten weeks from the night being run."""
     orders = forecast.orders_for_demand(train, t1)
     daily = forecast.daily_frame(orders, cal)
     total_m, chilled_m = forecast.DemandModel("total").fit(daily), forecast.DemandModel("chilled").fit(daily)
-    weeks = pd.DataFrame({"iso_year": 2026, "iso_week": range(17, 27)})
+    weeks = cal[["iso_year", "iso_week"]].drop_duplicates()
     fut = forecast.future_frame(orders[["depot", "brand"]].drop_duplicates(), cal, weeks)
     wk = forecast.weekly(fut, dict(total=total_m.predict_daily(fut), chilled=chilled_m.predict_daily(fut)))
-    wk = wk.groupby(["depot", "iso_year", "iso_week"], as_index=False)[["total", "chilled"]].sum().set_index(["depot", "iso_week"])
+    wk = wk.groupby(["depot", "iso_year", "iso_week"])[["total", "chilled"]].sum()
+
+    # What the stores actually ordered each week (every order, served or not: that is the demand).
+    t = train.merge(cal[["date", "iso_year", "iso_week"]], left_on="order_date", right_on="date")
+    t["chill"] = t.order_volume_m3.where(t.temp_requirement == "chilled", 0)
+    act = t.groupby(["depot", "iso_year", "iso_week"]).agg(total=("order_volume_m3", "sum"), chilled=("chill", "sum"))
 
     disp = train[(train.dispatch_status == "attempted") & (train.temp_requirement == "chilled")]
     defer_days = set(train[train.dispatch_status != "attempted"].order_date)
     day_cap = disp[disp.order_date.isin(defer_days)].groupby(["depot", "order_date"]).order_volume_m3.sum().groupby("depot").quantile(0.9).to_dict()
     opdays = cal[cal.is_operating == 1].groupby(["iso_year", "iso_week"]).size().to_dict()
-    fest = cal[cal.festival.notna()].groupby(["iso_year", "iso_week"]).festival.first().to_dict()
+    fest = cal[cal.festival.notna() & (cal.festival != "")].groupby(["iso_year", "iso_week"]).festival.first().to_dict()
     pay = cal[cal.is_payday == 1].groupby(["iso_year", "iso_week"]).size().to_dict()
     out = []
     for depot in ["Peliyagoda", "Kandy"]:
-        for wkno in range(17, 27):
-            od = opdays.get((2026, wkno), 6)
-            f = wk.loc[(depot, wkno)]
-            out.append(dict(depot=depot, iso_year=2026, iso_week=wkno, total=round(float(f.total)), chilled=round(float(f.chilled)),
+        for y, w in weeks.itertuples(index=False):
+            y, w = int(y), int(w)
+            if (depot, y, w) not in wk.index:
+                continue
+            f, od = wk.loc[(depot, y, w)], opdays.get((y, w), 0)
+            a = act.loc[(depot, y, w)] if (depot, y, w) in act.index else None
+            out.append(dict(depot=depot, iso_year=y, iso_week=w, total=round(float(f.total)), chilled=round(float(f.chilled)),
                             chilled_capacity=round(day_cap.get(depot, 0) * od), operating_days=od,
-                            festival=fest.get((2026, wkno), ""), paydays=pay.get((2026, wkno), 0)))
+                            festival=fest.get((y, w), ""), paydays=pay.get((y, w), 0),
+                            actual_total=None if a is None else round(float(a.total)), actual_chilled=None if a is None else round(float(a.chilled))))
     return out
+
+
+def seed_capacity_outlook(cur, train=None, t1=None, cal=None):
+    """The outlook for every week. Rebuilt on an older install that only had the walkthrough's ten weeks."""
+    cur.execute("SELECT count(*), count(actual_total) FROM capacity_outlook")
+    n, actual = cur.fetchone()
+    if n > 40 and actual:
+        return
+    train = read("Training Data/deliveries_train.csv") if train is None else train
+    t1 = read("Test Data/task1_test_inputs.csv") if t1 is None else t1
+    cal = read("General Data/calendar.csv") if cal is None else cal
+    ol = capacity_outlook(train, t1, cal)
+    cur.execute("DELETE FROM capacity_outlook")
+    copy_rows(cur, "capacity_outlook", list(ol[0].keys()), (tuple(r.values()) for r in ol))
+    log(f"capacity outlook: {len(ol) // 2} weeks per depot")
 
 
 def demo_day_orders(s1, train, outlets, cal) -> tuple[list, str]:
@@ -199,6 +239,7 @@ def main():
             # Accounts added in later versions still reach an existing install.
             seed_area_managers(cur, os.environ.get("SEED_PASSWORD", "routelanka").encode())
             seed_order_history(cur)
+            seed_capacity_outlook(cur)
             return
         if force:
             log("SEED_FORCE=1: clearing existing data")
@@ -232,14 +273,13 @@ def main():
         copy_rows(cur, "calendar", ["date", "dow", "iso_year", "iso_week", "is_payday", "festival", "festival_ramp", "is_holiday", "monsoon", "is_operating"],
                   c[["date", "dow", "iso_year", "iso_week", "is_payday", "festival", "festival_ramp", "is_holiday", "monsoon", "is_operating"]].itertuples(index=False))
         copy_rows(cur, "road_conditions", ["district", "date", "disruption_index"], roads[["district", "date", "disruption_index"]].itertuples(index=False))
-        seed_order_history(cur, train)
+        seed_order_history(cur, train, legs)
 
         log("measuring prediction parameters from the history")
         params = measure_params(train, legs, outlets, traffic)
         cur.execute("INSERT INTO engine_params (key, value) VALUES ('predictions', %s)", [Jsonb(params)])
         copy_rows(cur, "outlet_history", ["outlet_id", "summary"], ((k, Jsonb(v)) for k, v in outlet_history(train, legs).items()))
-        ol = capacity_outlook(train, t1, cal)
-        copy_rows(cur, "capacity_outlook", list(ol[0].keys()), (tuple(r.values()) for r in ol))
+        seed_capacity_outlook(cur, train, t1, cal)
 
         log("building the delivery day", DEMO_DATE)
         orders, kdate = demo_day_orders(s1, train, outlets, cal)

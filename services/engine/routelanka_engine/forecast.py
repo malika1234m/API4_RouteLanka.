@@ -1,6 +1,6 @@
-"""Demand forecast for the capacity outlook: the Datathon Task 2A model (daily, per depot x brand, summed to ISO weeks).
+"""Demand forecast for the capacity outlook: a daily model per depot x brand, summed to ISO weeks.
 
-The same code as datathon/src/demand.py. In backtests it was off by 3.7% of weekly volume on average, against 9.5%
+In backtests it was off by 3.7% of weekly volume on average, against 9.5%
 for "same week last year x growth".
 
 Why daily: festivals move between ISO weeks from year to year (Vesak fell in week 21 of 2024, week 20 of 2025 and week

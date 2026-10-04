@@ -251,7 +251,7 @@ export default function TodaysRun() {
               </div>
             </Card>
           )}
-          {roadIdx < 75 && !s.driver.delay && <p className="mt-2 rounded-md border border-hivis/60 bg-amber-soft px-3 py-2 text-sm font-semibold text-hivis-deep">{t("Roads are slow around {d} today (monsoon, road index {i}). Allow extra time, and report any hold-up below.", { d: stops[0]?.depot, i: roadIdx })}</p>}
+          {roadIdx < 75 && !s.driver.delay && <p className="mt-2 rounded-md border border-hivis/60 bg-amber-soft px-3 py-2 text-sm font-semibold text-hivis-deep">{t(seed.meta.monsoon ? "Roads are slow around {d} today (monsoon, road index {i}). Allow extra time, and report any hold-up below." : "Roads are slow around {d} today (road index {i}). Allow extra time, and report any hold-up below.", { d: stops[0]?.depot, i: roadIdx })}</p>}
 
           {/* The one thing to do now, big enough to read at arm's length. Wider screens use the side panel. */}
           {next && nextGroup && (

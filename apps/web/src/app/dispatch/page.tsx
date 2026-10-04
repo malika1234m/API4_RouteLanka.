@@ -192,7 +192,6 @@ export default function OrderQueue() {
               <Meter label={`Van-only · ${vans.length} vans × 2 trips`} used={sum(vanOnly, "order_volume_m3")} cap={vans.reduce((a, v) => a + v.volume_cap_m3, 0) * 2} unit="m³" />
               <Meter label="Ambient · all vehicles × 2 trips" used={sum(ambient, "order_volume_m3")} cap={avail.reduce((a, v) => a + v.volume_cap_m3, 0) * 2} unit="m³" />
             </div>
-            <p className="mt-3 text-xs text-mute">Two trips is the most any vehicle can run. Distance and the 03:30–08:00 Fresh window usually allow less, so the plan board checks every trip.</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm font-semibold">Largest orders tonight</p>

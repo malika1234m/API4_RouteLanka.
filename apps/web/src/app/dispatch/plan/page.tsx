@@ -421,7 +421,7 @@ function RoutePanel({ vid, orders, onClose }: { vid: string; orders: Order[]; on
               );
             })}
           </ol>
-          <p className="mt-3 text-xs text-mute">Store positions are approximate (the data has no addresses) and lines are straight, not roads. Times and distances come from the plan.</p>
+          <p className="mt-3 text-xs text-mute">Approximate store positions; straight lines, not roads.</p>
         </>
       )}
     </Card>

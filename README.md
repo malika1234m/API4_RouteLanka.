@@ -22,8 +22,8 @@ RouteLanka connects ordering, planning, loading, delivery and receipt for four r
   the phone.
 - **WhatsApp for stores.** Updates and one-tap replies through the WhatsApp Business Platform, in English, Sinhala
   or Tamil. Each store connects its own phone by scanning a QR code (*Messages → Connect WhatsApp*).
-- **Capacity outlook.** A 10-week forecast of demand against refrigerated capacity, using our Datathon model.
-- **Fleet and impact.** Repair priorities, hire-or-defer costs and a pilot scorecard.
+- **Capacity outlook.** A 10-week forecast of demand against refrigerated capacity.
+- **Fleet.** Repair priorities and hire-or-defer costs.
 - **Team management.** Dispatchers add drivers, loaders, store managers and other dispatchers, and tie each one to
   their work: a vehicle, a depot or a store. Every person sees only what their account covers.
 
@@ -116,8 +116,9 @@ About 10 minutes, across all four roles.
 6. **Decide the shortfall.** As the dispatcher, open *Live runs* and choose *Send short*. The store is told before
    the truck leaves.
 7. **Release the truck.** As the loader, load the rest, then *Mark ready* and *Release*.
-8. **Deliver offline.** As the driver (`/preview`), tap *Lose signal*, open the first stop, tap *I've arrived*,
-   enter the store's handover code from step 4, and save. The delivery waits on the phone.
+8. **Deliver offline.** As the driver (`/preview`), tap *Lose signal*, open the first stop (OUT108), tap *I've
+   arrived*, and save the delivery with OUT108's handover code (the store sees it under *My deliveries*, choosing
+   outlet OUT108) or with *No code? Take a name and signature instead*. The delivery waits on the phone.
 9. **Report a delay.** Tap *Held up? Report a delay*. Without data signal it is sent by SMS.
 10. **Re-plan the stops.** As the dispatcher, open *Map* and *Live runs*. The vehicle appears at its last report.
     Choose what happens to each remaining stop, then *Confirm and tell the stores*.
@@ -125,8 +126,8 @@ About 10 minutes, across all four roles.
 12. **Signal returns.** As the driver, tap *Signal returns*. The delivery syncs with its original time, and any
     changes made meanwhile are shown to the driver.
 13. **Confirm receipt.** The store confirms the delivery or reports a problem.
-14. **Explore.** *Fleet*, *Capacity outlook* and *Impact* show the planning side; the RabbitMQ console shows the
-    message flow.
+14. **Explore.** *Fleet*, *Capacity outlook* and *Team* show the planning side. Running locally, the
+    RabbitMQ console (http://localhost:15672) shows the message flow.
 
 Steps 1 to 13 also run automatically: `python tests/e2e/walkthrough.py`.
 
@@ -208,7 +209,7 @@ Further browser tests cover every screen at phone and desktop size (`crawl.py`),
 | Fixed example handover code | A random code per stop, checked against a hash | A fixed code proves nothing |
 | State kept in the browser | Shared database and live updates | Four people on four devices see the same night |
 | Planner ran once | Planner runs on request (*Re-plan*) | A slow plan never blocks the app |
-| Placeholder demand forecast | The Datathon demand model | As the prototype stated |
+| Placeholder demand forecast | A demand model trained on the order history | As the prototype stated |
 | Language saved per session | Language saved on each account | The language follows the person |
 | WhatsApp shown as a mock-up | WhatsApp Business Platform integration with a simulator | A working channel judges can test |
 | One demo person per role | A *Team* screen; each account tied to its vehicle, store or depot | A depot has many drivers and stores, not one |

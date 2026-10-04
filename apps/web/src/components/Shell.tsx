@@ -16,7 +16,6 @@ const NAV: Record<Role, { href: string; label: string }[]> = {
     { href: "/dispatch/map", label: "Map" },
     { href: "/dispatch/fleet", label: "Fleet" },
     { href: "/dispatch/outlook", label: "Capacity outlook" },
-    { href: "/dispatch/impact", label: "Impact" },
     { href: "/dispatch/whatsapp", label: "WhatsApp" },
     { href: "/dispatch/team", label: "Team" },
   ],
@@ -54,6 +53,14 @@ const subscribeClock = (cb: () => void) => {
   const t = setInterval(cb, 4000); // one demo minute
   return () => clearInterval(t);
 };
+
+/** The night being run, e.g. "Sat 20 Dec". */
+function NightDate() {
+  const { s } = useDemo();
+  const d = new Date(`${s.day.service_date}T00:00:00Z`);
+  const label = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
+  return <span className="hidden text-sm text-white/60 lg:inline">{label}</span>;
+}
 
 function DemoClock() {
   const { s } = useDemo();
@@ -262,7 +269,7 @@ export function Shell({
           <span className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             {right}
             {role !== "dispatcher" && <LangSwitch role={role} />}
-            <span className="hidden text-sm text-white/60 lg:inline">Fri 24 Apr</span>
+            <NightDate />
             <DemoClock />
             {/* The driver works stop by stop; the cross-role activity feed only on wider screens. */}
             <span className={role === "driver" ? "hidden sm:block" : ""}>

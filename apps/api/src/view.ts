@@ -3,7 +3,7 @@
  * Role-specific secrets are added only for the role that may see them (store handover codes, and
  * the driver's hashes for checking those codes offline).
  */
-import { codeHash, type DayView, type DriverView, type Person, type FeedItem, type Lang, type Order, type OrderState, type Reference, type Role, type Trip, type Vehicle } from "@routelanka/domain";
+import { codeHash, type OutletHistory, type DayView, type DriverView, type Person, type FeedItem, type Lang, type Order, type OrderState, type Reference, type Role, type Trip, type Vehicle } from "@routelanka/domain";
 import { sql } from "./db";
 import { coversStore, type Account } from "./auth";
 import type { Day } from "./day";
@@ -163,14 +163,52 @@ export async function buildView(day: Day, role?: Role, signedIn: Account[] = [])
   return view;
 }
 
+/**
+ * Each store's delivery record as it stood before `night`: its last 90 orders (on time, late, missed), the typical
+ * minutes late, and its last 20 delivery days. From order_history, so a night picked from the history shows the
+ * record the store had then, not one from later.
+ */
+async function outletHistory(night: string): Promise<Record<string, OutletHistory>> {
+  const rows = await sql<{ outlet_id: string; runs: number; on_time: number; late: number; missed: number; late_median: number | null; since: string; until: string; recent: OutletHistory["recent"] }[]>`
+    WITH h AS (
+      SELECT outlet_id, order_date, state, late_min,
+             row_number() OVER (PARTITION BY outlet_id ORDER BY order_date DESC) AS rn
+      FROM order_history WHERE order_date < ${night}::date AND state IS NOT NULL
+    ), last90 AS (
+      SELECT outlet_id, count(*)::int AS runs,
+             round(100.0 * avg((state = 'on_time')::int))::int AS on_time,
+             round(100.0 * avg((state = 'late')::int))::int AS late,
+             sum((state = 'missed')::int)::int AS missed,
+             (percentile_cont(0.5) WITHIN GROUP (ORDER BY late_min) FILTER (WHERE state = 'late'))::int AS late_median,
+             min(order_date)::text AS since, max(order_date)::text AS until
+      FROM h WHERE rn <= 90 GROUP BY outlet_id
+    ), days AS (
+      SELECT outlet_id, order_date,
+             CASE WHEN bool_or(state = 'missed') THEN 'missed' WHEN bool_or(state = 'late') THEN 'late' ELSE 'on_time' END AS state,
+             row_number() OVER (PARTITION BY outlet_id ORDER BY order_date DESC) AS dn
+      FROM h GROUP BY outlet_id, order_date
+    )
+    SELECT l.*, coalesce((SELECT json_agg(json_build_object('date', d.order_date::text, 'state', d.state) ORDER BY d.order_date)
+                          FROM days d WHERE d.outlet_id = l.outlet_id AND d.dn <= 20), '[]'::json) AS recent
+    FROM last90 l`;
+  return Object.fromEntries(rows.map(({ outlet_id, ...r }) => [outlet_id, r]));
+}
+
 export async function buildReference(day: Day): Promise<Reference> {
   const [outlets, vehicles, districts, allowance, outlook, history, roads] = await Promise.all([
     sql`SELECT * FROM outlets ORDER BY outlet_id`,
     sql`SELECT * FROM vehicles ORDER BY vehicle_id`,
     sql`SELECT * FROM districts ORDER BY district`,
     sql`SELECT brand, dock_type, minutes FROM service_allowance`,
-    sql`SELECT depot, iso_week, total, chilled, chilled_capacity, operating_days, festival, paydays FROM capacity_outlook ORDER BY depot DESC, iso_week`,
-    sql<{ outlet_id: string; summary: unknown }[]>`SELECT outlet_id, summary FROM outlet_history`,
+    // The ten weeks from the night being run: actual volumes where the history has them, else the forecast.
+    sql`SELECT depot, iso_year, iso_week, total, chilled, chilled_capacity, operating_days, festival, paydays, actual FROM (
+          SELECT depot, iso_year, iso_week, coalesce(actual_total, total) AS total, coalesce(actual_chilled, chilled) AS chilled,
+                 chilled_capacity, operating_days, festival, paydays, actual_total IS NOT NULL AS actual,
+                 row_number() OVER (PARTITION BY depot ORDER BY iso_year, iso_week) AS n
+          FROM capacity_outlook
+          WHERE (iso_year, iso_week) >= (extract(isoyear FROM ${day.service_date}::date)::int, extract(week FROM ${day.service_date}::date)::int)
+        ) w WHERE n <= 10 ORDER BY depot DESC, iso_year, iso_week`,
+    outletHistory(day.service_date),
     sql<{ district: string; disruption_index: number }[]>`SELECT district, disruption_index FROM road_conditions WHERE date = ${day.service_date}::date`,
   ]);
   return {
@@ -179,7 +217,7 @@ export async function buildReference(day: Day): Promise<Reference> {
     districts: districts as never,
     allowance: allowance as never,
     outlook: outlook as never,
-    outlet_history: Object.fromEntries(history.map((h) => [h.outlet_id, h.summary])) as never,
+    outlet_history: history as never,
     road_today: Object.fromEntries(roads.map((r) => [r.district, r.disruption_index])),
   };
 }

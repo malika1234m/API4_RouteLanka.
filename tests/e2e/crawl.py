@@ -42,7 +42,7 @@ async def main():
         drv = v["driver"]
         stop = next(o["order_ref"] for o in v["orders"] if o.get("vehicle_id") == drv["vehicle_id"] and o.get("trip_id") == drv["trip_id"])
         routes = ["/", "/login", "/preview",
-                  "/dispatch", "/dispatch/plan", "/dispatch/monitor", "/dispatch/map", "/dispatch/fleet", "/dispatch/outlook", "/dispatch/impact", "/dispatch/whatsapp", "/wa-sim",
+                  "/dispatch", "/dispatch/plan", "/dispatch/monitor", "/dispatch/map", "/dispatch/fleet", "/dispatch/outlook", "/dispatch/whatsapp", "/wa-sim",
                   "/dock", f"/dock/{drv['vehicle_id']}/{drv['trip_id']}",
                   "/driver", f"/driver/stop/{stop}",
                   "/store", "/store/messages", "/store/order", f"/store/receive/{stop}"]

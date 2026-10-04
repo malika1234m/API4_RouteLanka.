@@ -93,7 +93,10 @@ export interface District {
 
 export interface OutlookWeek {
   depot: string;
+  iso_year: number;
   iso_week: number;
+  /** The week is in the delivery history: total and chilled are what the stores actually ordered, not a forecast. */
+  actual?: boolean;
   total: number;
   chilled: number;
   chilled_capacity: number;

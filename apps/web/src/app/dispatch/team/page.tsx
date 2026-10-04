@@ -78,7 +78,6 @@ export default function Team() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h1 className="font-cond text-2xl font-bold leading-tight">Team</h1>
-          <p className="text-sm text-mute">Add the people who use RouteLanka and tie each one to their work. Each person sees only what their account covers.</p>
         </div>
         <Btn
           variant="primary"
@@ -203,17 +202,6 @@ export default function Team() {
                 setHandover(h ?? null);
               }}
             />
-          )}
-          {!panel && !handover && (
-            <Card className="p-4 text-sm text-mute">
-              <p className="font-semibold text-night">How accounts work</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>A store manager sees and confirms deliveries for their own store; an area manager, for every store in their district.</li>
-                <li>A driver runs one vehicle. Their phone reports that vehicle&apos;s run, also without signal.</li>
-                <li>Loaders and dispatchers open on their own depot.</li>
-                <li>Deactivating an account signs that person out on every device straight away.</li>
-              </ul>
-            </Card>
           )}
         </div>
       </div>

@@ -51,7 +51,6 @@ export default function Fleet() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h1 className="font-cond text-2xl font-bold leading-tight">Fleet readiness</h1>
-          <p className="text-sm text-mute">Refrigerated space is the constraint. Every refrigerated truck in the workshop is tonight&apos;s deferrals.</p>
         </div>
         <DepotToggle depot={depot} onChange={setDepot} />
       </div>
@@ -80,7 +79,6 @@ export default function Fleet() {
             <IconWrench className="size-5" />
             <div>
               <p className="font-cond text-lg font-semibold">Repair priority: fix these first</p>
-              <p className="text-xs text-mute">Ranked by the deferred orders each vehicle could carry tonight if it were back. Share this list with the workshop.</p>
             </div>
           </div>
           {workshop.length === 0 ? (
@@ -146,7 +144,6 @@ export default function Fleet() {
         <div className="space-y-4">
           <Card className="p-4">
             <p className="font-cond text-lg font-semibold">Hire or defer, tonight</p>
-            <p className="text-xs text-mute">Compares the cost of one hired refrigerated truck with the value lost if the orders wait a day.</p>
             {hire ? (
               <>
                 <div className={`mt-3 rounded-md border-l-4 px-3 py-2 ${net > 0 ? "border-ok bg-ok-soft" : "border-line bg-paper"}`}>
